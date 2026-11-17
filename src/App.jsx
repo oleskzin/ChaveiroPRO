@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import { 
   Wrench, Package, DollarSign, Calendar, Users, FileText, 
-  Plus, Trash2, CheckCircle, Search, Phone, 
-  MapPin, RefreshCw, ShoppingCart, ArrowUpCircle, ArrowDownCircle, Share2, AlertCircle
+  Plus, Trash2, Edit2, CheckCircle, Search, Phone, 
+  MapPin, RefreshCw, ShoppingCart, ArrowUpCircle, ArrowDownCircle, Share2, AlertCircle, X, Check
 } from 'lucide-react';
 
 export default function App() {
@@ -27,11 +27,16 @@ export default function App() {
   const [formaPgto, setFormaPgto] = useState('Pix');
 
   // Estados de Formulários
-  const [novaChave, setNovaChave] = useState({ id: '', nome: '', cat: 'Yale / Comum', qtd: 10, minimo: 3, custo: 2.5, venda: 15 });
+  const [novaChave, setNovaChave] = useState({ id: '', nome: '', cat: 'Yale / Comum', qtd: 10, minimo: 3, custo: '', venda: '' });
+  const [editandoEstoqueId, setEditandoEstoqueId] = useState(null);
+
   const [novaOS, setNovaOS] = useState({ cliente: '', tel: '', desc: '', valor: '', custo_insumo: 0, chave_id: '', qtd_copias: 1 });
   const [novoAgendamento, setNovoAgendamento] = useState({ cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '', taxa_deslocamento: 20, valor_estimado: 80 });
   const [novoCliente, setNovoCliente] = useState({ nome: '', tel: '', endereco: '', tipo: 'Residencial', obs: '' });
+  
   const [novaTransacao, setNovaTransacao] = useState({ tipo: 'saida', desc: '', valor: '', forma: 'Pix' });
+  const [transacaoEditando, setTransacaoEditando] = useState(null);
+
   const [novaConta, setNovaConta] = useState({ desc: '', valor: '', vencimento: '' });
   const [filtroPeriodoCaixa, setFiltroPeriodoCaixa] = useState('todos');
   const [orcamento, setOrcamento] = useState({ cliente: '', tel: '', itens: [{ desc: '', qtd: 1, valor: 0 }], obs: 'Validade do orçamento: 7 dias.' });
@@ -117,7 +122,7 @@ export default function App() {
     setLoading(true);
 
     const totalVenda = carrinho.reduce((acc, i) => acc + i.venda * i.qtdVenda, 0);
-    const totalCusto = carrinho.reduce((acc, i) => acc + (i.custo || 0) * i.qtdVenda, 0);
+    const totalCusto = carrinho.reduce((acc, i) => acc + (Number(i.custo) || 0) * i.qtdVenda, 0);
     const resumoDesc = carrinho.map((i) => `${i.qtdVenda}x ${i.nome}`).join(', ');
 
     const novaTrans = {
@@ -131,7 +136,6 @@ export default function App() {
       timestamp: Date.now()
     };
 
-    // Atualiza na tela imediatamente
     setTransacoes((prev) => [novaTrans, ...prev]);
 
     const { error } = await supabase.from('transacoes').insert([novaTrans]);
@@ -160,15 +164,17 @@ export default function App() {
     e.preventDefault();
     if (!novaChave.nome) return;
     const idFinal = novaChave.id.trim() || `CH-${Date.now().toString().slice(-4)}`;
+    const itemExistente = estoque.find((i) => i.id === idFinal);
+
     const novoItem = {
       id: idFinal,
       nome: novaChave.nome,
       cat: novaChave.cat,
-      qtd: Number(novaChave.qtd),
-      minimo: Number(novaChave.minimo),
-      custo: Number(novaChave.custo),
-      venda: Number(novaChave.venda),
-      vendas_total: 0
+      qtd: Number(novaChave.qtd || 0),
+      minimo: Number(novaChave.minimo || 3),
+      custo: Number(novaChave.custo || 0),
+      venda: Number(novaChave.venda || 0),
+      vendas_total: itemExistente ? Number(itemExistente.vendas_total || 0) : 0
     };
 
     setEstoque((prev) => [...prev.filter((i) => i.id !== idFinal), novoItem]);
@@ -179,8 +185,28 @@ export default function App() {
       return;
     }
 
-    setNovaChave({ id: '', nome: '', cat: 'Yale / Comum', qtd: 10, minimo: 3, custo: 2.5, venda: 15 });
+    setNovaChave({ id: '', nome: '', cat: 'Yale / Comum', qtd: 10, minimo: 3, custo: '', venda: '' });
+    setEditandoEstoqueId(null);
     carregarDados();
+  };
+
+  const iniciarEdicaoEstoque = (item) => {
+    setEditandoEstoqueId(item.id);
+    setNovaChave({
+      id: item.id,
+      nome: item.nome,
+      cat: item.cat,
+      qtd: item.qtd,
+      minimo: item.minimo || 3,
+      custo: item.custo || 0,
+      venda: item.venda || 0
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelarEdicaoEstoque = () => {
+    setEditandoEstoqueId(null);
+    setNovaChave({ id: '', nome: '', cat: 'Yale / Comum', qtd: 10, minimo: 3, custo: '', venda: '' });
   };
 
   const alterarQtdEstoque = async (item, delta) => {
@@ -198,6 +224,9 @@ export default function App() {
     if (error) alert('Erro ao excluir: ' + error.message);
     carregarDados();
   };
+
+  const capitalTotalEstoque = estoque.reduce((acc, i) => acc + Number(i.custo || 0) * Number(i.qtd || 0), 0);
+  const potencialVendaEstoque = estoque.reduce((acc, i) => acc + Number(i.venda || 0) * Number(i.qtd || 0), 0);
 
   // ================= FUNÇÕES DE ORDENS DE SERVIÇO (OS) =================
   const criarOS = async (e) => {
@@ -349,6 +378,33 @@ export default function App() {
     carregarDados();
   };
 
+  const salvarEdicaoTransacao = async () => {
+    if (!transacaoEditando || !transacaoEditando.desc || transacaoEditando.valor === '') return;
+    const atualizada = {
+      tipo: transacaoEditando.tipo,
+      desc: transacaoEditando.desc,
+      valor: Number(transacaoEditando.valor),
+      forma: transacaoEditando.forma
+    };
+
+    setTransacoes((prev) => prev.map((t) => t.id === transacaoEditando.id ? { ...t, ...atualizada } : t));
+    const { error } = await supabase.from('transacoes').update(atualizada).eq('id', transacaoEditando.id);
+    if (error) {
+      alert('Erro ao editar movimentação: ' + error.message);
+      return;
+    }
+    setTransacaoEditando(null);
+    carregarDados();
+  };
+
+  const excluirTransacao = async (id) => {
+    if (!window.confirm('Deseja excluir este lançamento do caixa?')) return;
+    setTransacoes((prev) => prev.filter((t) => t.id !== id));
+    const { error } = await supabase.from('transacoes').delete().eq('id', id);
+    if (error) alert('Erro ao excluir movimentação: ' + error.message);
+    carregarDados();
+  };
+
   const criarContaPagar = async (e) => {
     e.preventDefault();
     if (!novaConta.desc || !novaConta.valor || !novaConta.vencimento) return;
@@ -407,6 +463,7 @@ export default function App() {
 
   const totalEntradas = transacoesFiltradas.filter((t) => t.tipo === 'entrada').reduce((acc, t) => acc + Number(t.valor), 0);
   const totalSaidas = transacoesFiltradas.filter((t) => t.tipo === 'saida').reduce((acc, t) => acc + Number(t.valor), 0);
+  const custoInsumosPeriodo = transacoesFiltradas.filter((t) => t.tipo === 'entrada').reduce((acc, t) => acc + Number(t.custo_insumo || 0), 0);
   const saldoLiquido = totalEntradas - totalSaidas;
 
   // ================= FUNÇÕES DO ORÇAMENTO =================
@@ -487,6 +544,7 @@ export default function App() {
       </nav>
 
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 space-y-6">
+        {/* ================= ABA 1: PDV / BALCÃO ================= */}
         {abaAtiva === 'pdv' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
@@ -526,7 +584,7 @@ export default function App() {
               </div>
 
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-                <h3 className="font-bold text-sm text-slate-300 mb-3">Adicionar Mão de Obra / abertura / serviço avulso</h3>
+                <h3 className="font-bold text-sm text-slate-300 mb-3">Adicionar Mão de Obra / Abertura / Serviço Avulso</h3>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
@@ -616,19 +674,48 @@ export default function App() {
           </div>
         )}
 
+        {/* ================= ABA 2: ESTOQUE DE CHAVES COM CUSTO E MARGEM ================= */}
         {abaAtiva === 'estoque' && (
           <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                <span className="text-xs text-slate-400">Modelos Cadastrados</span>
+                <p className="text-xl font-bold text-slate-100 mt-1">{estoque.length} itens</p>
+              </div>
+              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                <span className="text-xs text-slate-400">Capital Investido (Custo Total)</span>
+                <p className="text-xl font-bold text-amber-400 mt-1">R$ {capitalTotalEstoque.toFixed(2)}</p>
+              </div>
+              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                <span className="text-xs text-slate-400">Potencial de Venda Bruta</span>
+                <p className="text-xl font-bold text-emerald-400 mt-1">R$ {potencialVendaEstoque.toFixed(2)}</p>
+              </div>
+            </div>
+
             <form onSubmit={salvarNovaChave} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-              <h2 className="font-bold text-amber-400 flex items-center gap-2">
-                <Plus size={18} /> Cadastrar Novo Modelo ou Item no Estoque
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="flex items-center justify-between">
+                <h2 className="font-bold text-amber-400 flex items-center gap-2">
+                  <Plus size={18} /> {editandoEstoqueId ? `Editando Item: ${editandoEstoqueId}` : 'Cadastrar ou Atualizar Item no Estoque'}
+                </h2>
+                {editandoEstoqueId && (
+                  <button
+                    type="button"
+                    onClick={cancelarEdicaoEstoque}
+                    className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                  >
+                    <X size={14} /> Cancelar Edição
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
                 <input
                   type="text"
                   placeholder="Código (Ex: Y1, T12)"
                   value={novaChave.id}
+                  disabled={!!editandoEstoqueId}
                   onChange={(e) => setNovaChave({ ...novaChave, id: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
                 />
                 <input
                   type="text"
@@ -636,7 +723,7 @@ export default function App() {
                   required
                   value={novaChave.nome}
                   onChange={(e) => setNovaChave({ ...novaChave, nome: e.target.value })}
-                  className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                  className="lg:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
                 />
                 <select
                   value={novaChave.cat}
@@ -652,7 +739,7 @@ export default function App() {
                 </select>
                 <input
                   type="number"
-                  placeholder="Qtd Inicial"
+                  placeholder="Qtd"
                   value={novaChave.qtd}
                   onChange={(e) => setNovaChave({ ...novaChave, qtd: e.target.value })}
                   className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
@@ -660,14 +747,23 @@ export default function App() {
                 <input
                   type="number"
                   step="0.01"
-                  placeholder="Preço Venda (R$)"
+                  placeholder="Custo Un. (R$)"
+                  value={novaChave.custo}
+                  onChange={(e) => setNovaChave({ ...novaChave, custo: e.target.value })}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Venda Un. (R$) *"
+                  required
                   value={novaChave.venda}
                   onChange={(e) => setNovaChave({ ...novaChave, venda: e.target.value })}
                   className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">
-                Salvar no Estoque
+                {editandoEstoqueId ? 'Salvar Alterações' : 'Salvar no Estoque'}
               </button>
             </form>
 
@@ -681,31 +777,43 @@ export default function App() {
                       <th>Modelo / Descrição</th>
                       <th>Categoria</th>
                       <th>Qtd</th>
-                      <th>Venda</th>
+                      <th>Custo Un.</th>
+                      <th>Venda Un.</th>
+                      <th>Lucro Un.</th>
                       <th>Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {estoque.map((item) => (
-                      <tr key={item.id}>
-                        <td className="py-2.5 font-mono text-xs text-slate-400">{item.id}</td>
-                        <td className="font-medium">{item.nome}</td>
-                        <td className="text-xs text-slate-400">{item.cat}</td>
-                        <td>
-                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${item.qtd <= item.minimo ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-slate-800 text-emerald-400'}`}>
-                            {item.qtd} un
-                          </span>
-                        </td>
-                        <td className="text-amber-400 font-semibold">R$ {Number(item.venda).toFixed(2)}</td>
-                        <td className="flex items-center gap-1 py-2">
-                          <button onClick={() => alterarQtdEstoque(item, 1)} className="bg-slate-800 px-2 py-1 rounded hover:bg-slate-700 text-xs">+1</button>
-                          <button onClick={() => alterarQtdEstoque(item, -1)} className="bg-slate-800 px-2 py-1 rounded hover:bg-slate-700 text-xs">-1</button>
-                          <button onClick={() => excluirItemEstoque(item.id)} className="text-red-400 hover:text-red-300 ml-2">
-                            <Trash2 size={15} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {estoque.map((item) => {
+                      const custo = Number(item.custo || 0);
+                      const venda = Number(item.venda || 0);
+                      const lucro = venda - custo;
+                      return (
+                        <tr key={item.id}>
+                          <td className="py-2.5 font-mono text-xs text-slate-400">{item.id}</td>
+                          <td className="font-medium">{item.nome}</td>
+                          <td className="text-xs text-slate-400">{item.cat}</td>
+                          <td>
+                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${item.qtd <= item.minimo ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-slate-800 text-emerald-400'}`}>
+                              {item.qtd} un
+                            </span>
+                          </td>
+                          <td className="text-slate-300">R$ {custo.toFixed(2)}</td>
+                          <td className="text-amber-400 font-semibold">R$ {venda.toFixed(2)}</td>
+                          <td className="text-emerald-400 font-semibold text-xs">+R$ {lucro.toFixed(2)}</td>
+                          <td className="flex items-center gap-1 py-2">
+                            <button onClick={() => alterarQtdEstoque(item, 1)} className="bg-slate-800 px-2 py-1 rounded hover:bg-slate-700 text-xs">+1</button>
+                            <button onClick={() => alterarQtdEstoque(item, -1)} className="bg-slate-800 px-2 py-1 rounded hover:bg-slate-700 text-xs">-1</button>
+                            <button onClick={() => iniciarEdicaoEstoque(item)} className="text-amber-400 hover:text-amber-300 ml-2 p-1" title="Editar item">
+                              <Edit2 size={14} />
+                            </button>
+                            <button onClick={() => excluirItemEstoque(item.id)} className="text-red-400 hover:text-red-300 p-1" title="Excluir item">
+                              <Trash2 size={15} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -713,6 +821,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ================= ABA 3: ORDENS DE SERVIÇO (OS) ================= */}
         {abaAtiva === 'os' && (
           <div className="space-y-6">
             <form onSubmit={criarOS} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
@@ -790,6 +899,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ================= ABA 4: AGENDA DE SOCORROS ================= */}
         {abaAtiva === 'agenda' && (
           <div className="space-y-6">
             <form onSubmit={criarAgendamento} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
@@ -876,24 +986,29 @@ export default function App() {
           </div>
         )}
 
+        {/* ================= ABA 5: CAIXA COM EDIÇÃO E CONTAS A PAGAR ================= */}
         {abaAtiva === 'caixa' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
                 <span className="text-xs text-slate-400 flex items-center gap-1">
-                  <ArrowUpCircle size={14} className="text-emerald-400" /> Entradas no Período
+                  <ArrowUpCircle size={14} className="text-emerald-400" /> Entradas Brutas
                 </span>
-                <p className="text-2xl font-bold text-emerald-400 mt-1">R$ {totalEntradas.toFixed(2)}</p>
+                <p className="text-xl font-bold text-emerald-400 mt-1">R$ {totalEntradas.toFixed(2)}</p>
               </div>
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
                 <span className="text-xs text-slate-400 flex items-center gap-1">
                   <ArrowDownCircle size={14} className="text-red-400" /> Saídas / Despesas
                 </span>
-                <p className="text-2xl font-bold text-red-400 mt-1">R$ {totalSaidas.toFixed(2)}</p>
+                <p className="text-xl font-bold text-red-400 mt-1">R$ {totalSaidas.toFixed(2)}</p>
               </div>
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Saldo Líquido</span>
-                <p className={`text-2xl font-bold mt-1 ${saldoLiquido >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                <span className="text-xs text-slate-400">Custo de Chaves Vendidas</span>
+                <p className="text-xl font-bold text-slate-300 mt-1">R$ {custoInsumosPeriodo.toFixed(2)}</p>
+              </div>
+              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                <span className="text-xs text-slate-400">Saldo Líquido em Caixa</span>
+                <p className={`text-xl font-bold mt-1 ${saldoLiquido >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
                   R$ {saldoLiquido.toFixed(2)}
                 </p>
               </div>
@@ -946,16 +1061,87 @@ export default function App() {
                   </button>
                 </form>
 
-                <div className="space-y-2 max-h-80 overflow-y-auto">
+                <div className="space-y-2 max-h-96 overflow-y-auto">
                   {transacoesFiltradas.map((t) => (
-                    <div key={t.id} className="flex justify-between items-center bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
-                      <div>
-                        <p className="font-semibold text-slate-200">{t.desc}</p>
-                        <span className="text-slate-500">{t.data} • {t.forma}</span>
-                      </div>
-                      <span className={`font-bold ${t.tipo === 'entrada' ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {t.tipo === 'entrada' ? '+' : '-'} R$ {Number(t.valor).toFixed(2)}
-                      </span>
+                    <div key={t.id} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
+                      {transacaoEditando && transacaoEditando.id === t.id ? (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap gap-2">
+                            <select
+                              value={transacaoEditando.tipo}
+                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, tipo: e.target.value })}
+                              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
+                            >
+                              <option value="entrada">Entrada (+)</option>
+                              <option value="saida">Saída (-)</option>
+                            </select>
+                            <input
+                              type="text"
+                              value={transacaoEditando.desc}
+                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, desc: e.target.value })}
+                              className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
+                            />
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={transacaoEditando.valor}
+                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, valor: e.target.value })}
+                              className="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
+                            />
+                            <select
+                              value={transacaoEditando.forma}
+                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, forma: e.target.value })}
+                              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
+                            >
+                              <option>Pix</option>
+                              <option>Dinheiro</option>
+                              <option>Cartão de Crédito</option>
+                              <option>Cartão de Débito</option>
+                              <option>Boleto</option>
+                            </select>
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={salvarEdicaoTransacao}
+                              className="bg-emerald-500 text-slate-950 font-bold px-2.5 py-1 rounded flex items-center gap-1"
+                            >
+                              <Check size={12} /> Salvar
+                            </button>
+                            <button
+                              onClick={() => setTransacaoEditando(null)}
+                              className="bg-slate-800 text-slate-300 px-2.5 py-1 rounded flex items-center gap-1"
+                            >
+                              <X size={12} /> Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="font-semibold text-slate-200">{t.desc}</p>
+                            <span className="text-slate-500">{t.data} • {t.forma}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`font-bold ${t.tipo === 'entrada' ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {t.tipo === 'entrada' ? '+' : '-'} R$ {Number(t.valor).toFixed(2)}
+                            </span>
+                            <button
+                              onClick={() => setTransacaoEditando({ ...t })}
+                              className="text-amber-400 hover:text-amber-300 p-1"
+                              title="Editar lançamento"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              onClick={() => excluirTransacao(t.id)}
+                              className="text-red-400 hover:text-red-300 p-1"
+                              title="Excluir lançamento"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1026,6 +1212,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ================= ABA 6: CRM DE CLIENTES ================= */}
         {abaAtiva === 'clientes' && (
           <div className="space-y-6">
             <form onSubmit={criarCliente} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
@@ -1086,6 +1273,7 @@ export default function App() {
           </div>
         )}
 
+        {/* ================= ABA 7: GERADOR DE ORÇAMENTOS ================= */}
         {abaAtiva === 'orcamento' && (
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 max-w-3xl mx-auto">
             <h2 className="font-bold text-amber-400">Gerador Rápido de Orçamento (WhatsApp)</h2>
