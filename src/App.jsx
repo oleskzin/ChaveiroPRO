@@ -2,15 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 import { 
   Wrench, Package, DollarSign, Calendar, Users, FileText, 
-  Plus, Trash2, CheckCircle, AlertTriangle, Search, Phone, 
-  MapPin, RefreshCw, ShoppingCart, ArrowUpCircle, ArrowDownCircle, Share2
+  Plus, Trash2, CheckCircle, Search, Phone, 
+  MapPin, RefreshCw, ShoppingCart, ArrowUpCircle, ArrowDownCircle, Share2, AlertCircle
 } from 'lucide-react';
 
 export default function App() {
   const [abaAtiva, setAbaAtiva] = useState('pdv');
   const [loading, setLoading] = useState(false);
+  const [erroConexao, setErroConexao] = useState(null);
 
-  // Estados das tabelas no Supabase
+  // Estados das tabelas
   const [estoque, setEstoque] = useState([]);
   const [transacoes, setTransacoes] = useState([]);
   const [contasPagar, setContasPagar] = useState([]);
@@ -25,7 +26,7 @@ export default function App() {
   const [servicoAvulsoValor, setServicoAvulsoValor] = useState('');
   const [formaPgto, setFormaPgto] = useState('Pix');
 
-  // Estados de Formulários (Estoque, OS, Agenda, Clientes, Caixa, Orçamentos)
+  // Estados de Formulários
   const [novaChave, setNovaChave] = useState({ id: '', nome: '', cat: 'Yale / Comum', qtd: 10, minimo: 3, custo: 2.5, venda: 15 });
   const [novaOS, setNovaOS] = useState({ cliente: '', tel: '', desc: '', valor: '', custo_insumo: 0, chave_id: '', qtd_copias: 1 });
   const [novoAgendamento, setNovoAgendamento] = useState({ cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '', taxa_deslocamento: 20, valor_estimado: 80 });
@@ -35,19 +36,21 @@ export default function App() {
   const [filtroPeriodoCaixa, setFiltroPeriodoCaixa] = useState('todos');
   const [orcamento, setOrcamento] = useState({ cliente: '', tel: '', itens: [{ desc: '', qtd: 1, valor: 0 }], obs: 'Validade do orçamento: 7 dias.' });
 
-  // Carregar todos os dados do Supabase
+  // Carregar dados do Supabase
   const carregarDados = async () => {
     setLoading(true);
+    setErroConexao(null);
     try {
+      const { data: est, error: errEst } = await supabase.from('estoque').select('*').order('nome', { ascending: true });
+      if (errEst) throw errEst;
+
       const [
-        { data: est },
         { data: trans },
         { data: contas },
         { data: os },
         { data: ag },
         { data: cli }
       ] = await Promise.all([
-        supabase.from('estoque').select('*').order('nome', { ascending: true }),
         supabase.from('transacoes').select('*').order('timestamp', { ascending: false }),
         supabase.from('contas_pagar').select('*').order('vencimento', { ascending: true }),
         supabase.from('ordens_servico').select('*').order('id', { ascending: false }),
@@ -63,12 +66,12 @@ export default function App() {
       if (cli) setClientes(cli);
     } catch (err) {
       console.error('Erro ao buscar dados:', err);
+      setErroConexao(err.message || 'Falha ao conectar com o Supabase.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Inicialização e escuta em tempo real (Realtime)
   useEffect(() => {
     carregarDados();
 
@@ -117,7 +120,6 @@ export default function App() {
     const totalCusto = carrinho.reduce((acc, i) => acc + (i.custo || 0) * i.qtdVenda, 0);
     const resumoDesc = carrinho.map((i) => `${i.qtdVenda}x ${i.nome}`).join(', ');
 
-    // 1. Registar no Caixa
     const novaTrans = {
       id: Date.now(),
       tipo: 'entrada',
@@ -128,13 +130,22 @@ export default function App() {
       data: new Date().toLocaleDateString('pt-BR'),
       timestamp: Date.now()
     };
-    await supabase.from('transacoes').insert([novaTrans]);
 
-    // 2. Dar baixa no Estoque
+    // Atualiza na tela imediatamente
+    setTransacoes((prev) => [novaTrans, ...prev]);
+
+    const { error } = await supabase.from('transacoes').insert([novaTrans]);
+    if (error) {
+      alert('Erro ao salvar venda no Supabase: ' + error.message);
+      setLoading(false);
+      return;
+    }
+
     for (const item of carrinho) {
       if (item.tipoItem === 'estoque') {
         const novaQtd = Math.max(0, Number(item.qtd) - Number(item.qtdVenda));
         const novasVendas = Number(item.vendas_total || 0) + Number(item.qtdVenda);
+        setEstoque((prev) => prev.map((e) => e.id === item.id ? { ...e, qtd: novaQtd, vendas_total: novasVendas } : e));
         await supabase.from('estoque').update({ qtd: novaQtd, vendas_total: novasVendas }).eq('id', item.id);
       }
     }
@@ -142,7 +153,6 @@ export default function App() {
     setCarrinho([]);
     await carregarDados();
     setLoading(false);
-    alert('Venda registada e estoque atualizado na nuvem!');
   };
 
   // ================= FUNÇÕES DO ESTOQUE =================
@@ -150,7 +160,7 @@ export default function App() {
     e.preventDefault();
     if (!novaChave.nome) return;
     const idFinal = novaChave.id.trim() || `CH-${Date.now().toString().slice(-4)}`;
-    await supabase.from('estoque').upsert([{
+    const novoItem = {
       id: idFinal,
       nome: novaChave.nome,
       cat: novaChave.cat,
@@ -159,20 +169,33 @@ export default function App() {
       custo: Number(novaChave.custo),
       venda: Number(novaChave.venda),
       vendas_total: 0
-    }]);
+    };
+
+    setEstoque((prev) => [...prev.filter((i) => i.id !== idFinal), novoItem]);
+
+    const { error } = await supabase.from('estoque').upsert([novoItem]);
+    if (error) {
+      alert('Erro ao salvar no estoque: ' + error.message);
+      return;
+    }
+
     setNovaChave({ id: '', nome: '', cat: 'Yale / Comum', qtd: 10, minimo: 3, custo: 2.5, venda: 15 });
     carregarDados();
   };
 
   const alterarQtdEstoque = async (item, delta) => {
     const novaQtd = Math.max(0, Number(item.qtd) + delta);
-    await supabase.from('estoque').update({ qtd: novaQtd }).eq('id', item.id);
+    setEstoque((prev) => prev.map((e) => e.id === item.id ? { ...e, qtd: novaQtd } : e));
+    const { error } = await supabase.from('estoque').update({ qtd: novaQtd }).eq('id', item.id);
+    if (error) alert('Erro ao atualizar quantidade: ' + error.message);
     carregarDados();
   };
 
   const excluirItemEstoque = async (id) => {
     if (!window.confirm('Remover este item do estoque?')) return;
-    await supabase.from('estoque').delete().eq('id', id);
+    setEstoque((prev) => prev.filter((e) => e.id !== id));
+    const { error } = await supabase.from('estoque').delete().eq('id', id);
+    if (error) alert('Erro ao excluir: ' + error.message);
     carregarDados();
   };
 
@@ -180,7 +203,7 @@ export default function App() {
   const criarOS = async (e) => {
     e.preventDefault();
     if (!novaOS.cliente || !novaOS.desc || !novaOS.valor) return;
-    await supabase.from('ordens_servico').insert([{
+    const itemOS = {
       id: Date.now(),
       cliente: novaOS.cliente,
       tel: novaOS.tel,
@@ -191,17 +214,24 @@ export default function App() {
       qtd_copias: Number(novaOS.qtd_copias || 0),
       status: 'pendente',
       data: new Date().toLocaleDateString('pt-BR')
-    }]);
+    };
+
+    setOrdensServico((prev) => [itemOS, ...prev]);
+    const { error } = await supabase.from('ordens_servico').insert([itemOS]);
+    if (error) {
+      alert('Erro ao salvar OS: ' + error.message);
+      return;
+    }
     setNovaOS({ cliente: '', tel: '', desc: '', valor: '', custo_insumo: 0, chave_id: '', qtd_copias: 1 });
     carregarDados();
   };
 
   const concluirOS = async (os) => {
     if (os.status === 'concluida') return;
+    setOrdensServico((prev) => prev.map((o) => o.id === os.id ? { ...o, status: 'concluida' } : o));
     await supabase.from('ordens_servico').update({ status: 'concluida' }).eq('id', os.id);
 
-    // Lançar entrada no caixa
-    await supabase.from('transacoes').insert([{
+    const novaTrans = {
       id: Date.now(),
       tipo: 'entrada',
       desc: `OS #${os.id.toString().slice(-4)} - ${os.cliente}: ${os.desc}`,
@@ -210,22 +240,14 @@ export default function App() {
       forma: 'Pix',
       data: new Date().toLocaleDateString('pt-BR'),
       timestamp: Date.now()
-    }]);
-
-    // Se usou chave do estoque, abater
-    if (os.chave_id && os.qtd_copias > 0) {
-      const chaveUsada = estoque.find((c) => c.id === os.chave_id);
-      if (chaveUsada) {
-        await supabase.from('estoque').update({
-          qtd: Math.max(0, Number(chaveUsada.qtd) - Number(os.qtd_copias)),
-          vendas_total: Number(chaveUsada.vendas_total || 0) + Number(os.qtd_copias)
-        }).eq('id', chaveUsada.id);
-      }
-    }
+    };
+    setTransacoes((prev) => [novaTrans, ...prev]);
+    await supabase.from('transacoes').insert([novaTrans]);
     carregarDados();
   };
 
   const excluirOS = async (id) => {
+    setOrdensServico((prev) => prev.filter((o) => o.id !== id));
     await supabase.from('ordens_servico').delete().eq('id', id);
     carregarDados();
   };
@@ -234,7 +256,7 @@ export default function App() {
   const criarAgendamento = async (e) => {
     e.preventDefault();
     if (!novoAgendamento.cliente || !novoAgendamento.endereco || !novoAgendamento.servico) return;
-    await supabase.from('agendamentos').insert([{
+    const itemAg = {
       id: Date.now(),
       cliente: novoAgendamento.cliente,
       tel: novoAgendamento.tel,
@@ -245,14 +267,22 @@ export default function App() {
       taxa_deslocamento: Number(novoAgendamento.taxa_deslocamento || 0),
       valor_estimado: Number(novoAgendamento.valor_estimado || 0),
       status: 'agendado'
-    }]);
+    };
+
+    setAgendamentos((prev) => [...prev, itemAg]);
+    const { error } = await supabase.from('agendamentos').insert([itemAg]);
+    if (error) {
+      alert('Erro ao salvar agendamento: ' + error.message);
+      return;
+    }
     setNovoAgendamento({ cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '', taxa_deslocamento: 20, valor_estimado: 80 });
     carregarDados();
   };
 
   const concluirAgendamento = async (ag) => {
+    setAgendamentos((prev) => prev.map((a) => a.id === ag.id ? { ...a, status: 'concluido' } : a));
     await supabase.from('agendamentos').update({ status: 'concluido' }).eq('id', ag.id);
-    await supabase.from('transacoes').insert([{
+    const novaTrans = {
       id: Date.now(),
       tipo: 'entrada',
       desc: `Socorro: ${ag.servico} (${ag.cliente})`,
@@ -261,11 +291,14 @@ export default function App() {
       forma: 'Pix',
       data: new Date().toLocaleDateString('pt-BR'),
       timestamp: Date.now()
-    }]);
+    };
+    setTransacoes((prev) => [novaTrans, ...prev]);
+    await supabase.from('transacoes').insert([novaTrans]);
     carregarDados();
   };
 
   const excluirAgendamento = async (id) => {
+    setAgendamentos((prev) => prev.filter((a) => a.id !== id));
     await supabase.from('agendamentos').delete().eq('id', id);
     carregarDados();
   };
@@ -274,15 +307,19 @@ export default function App() {
   const criarCliente = async (e) => {
     e.preventDefault();
     if (!novoCliente.nome) return;
-    await supabase.from('clientes').insert([{
-      id: Date.now(),
-      ...novoCliente
-    }]);
+    const itemCli = { id: Date.now(), ...novoCliente };
+    setClientes((prev) => [...prev, itemCli]);
+    const { error } = await supabase.from('clientes').insert([itemCli]);
+    if (error) {
+      alert('Erro ao salvar cliente: ' + error.message);
+      return;
+    }
     setNovoCliente({ nome: '', tel: '', endereco: '', tipo: 'Residencial', obs: '' });
     carregarDados();
   };
 
   const excluirCliente = async (id) => {
+    setClientes((prev) => prev.filter((c) => c.id !== id));
     await supabase.from('clientes').delete().eq('id', id);
     carregarDados();
   };
@@ -291,7 +328,7 @@ export default function App() {
   const adicionarTransacaoManual = async (e) => {
     e.preventDefault();
     if (!novaTransacao.desc || !novaTransacao.valor) return;
-    await supabase.from('transacoes').insert([{
+    const itemTrans = {
       id: Date.now(),
       tipo: novaTransacao.tipo,
       desc: novaTransacao.desc,
@@ -300,7 +337,14 @@ export default function App() {
       forma: novaTransacao.forma,
       data: new Date().toLocaleDateString('pt-BR'),
       timestamp: Date.now()
-    }]);
+    };
+
+    setTransacoes((prev) => [itemTrans, ...prev]);
+    const { error } = await supabase.from('transacoes').insert([itemTrans]);
+    if (error) {
+      alert('Erro ao lançar no caixa: ' + error.message);
+      return;
+    }
     setNovaTransacao({ tipo: 'saida', desc: '', valor: '', forma: 'Pix' });
     carregarDados();
   };
@@ -308,21 +352,28 @@ export default function App() {
   const criarContaPagar = async (e) => {
     e.preventDefault();
     if (!novaConta.desc || !novaConta.valor || !novaConta.vencimento) return;
-    await supabase.from('contas_pagar').insert([{
+    const itemConta = {
       id: Date.now(),
       desc: novaConta.desc,
       valor: Number(novaConta.valor),
       vencimento: novaConta.vencimento,
       status: 'pendente'
-    }]);
+    };
+    setContasPagar((prev) => [...prev, itemConta]);
+    const { error } = await supabase.from('contas_pagar').insert([itemConta]);
+    if (error) {
+      alert('Erro ao salvar boleto: ' + error.message);
+      return;
+    }
     setNovaConta({ desc: '', valor: '', vencimento: '' });
     carregarDados();
   };
 
   const pagarBoleto = async (conta) => {
     if (conta.status === 'pago') return;
+    setContasPagar((prev) => prev.map((c) => c.id === conta.id ? { ...c, status: 'pago' } : c));
     await supabase.from('contas_pagar').update({ status: 'pago' }).eq('id', conta.id);
-    await supabase.from('transacoes').insert([{
+    const novaTrans = {
       id: Date.now(),
       tipo: 'saida',
       desc: `Pagamento Boleto/Conta: ${conta.desc}`,
@@ -331,11 +382,14 @@ export default function App() {
       forma: 'Boleto',
       data: new Date().toLocaleDateString('pt-BR'),
       timestamp: Date.now()
-    }]);
+    };
+    setTransacoes((prev) => [novaTrans, ...prev]);
+    await supabase.from('transacoes').insert([novaTrans]);
     carregarDados();
   };
 
   const excluirContaPagar = async (id) => {
+    setContasPagar((prev) => prev.filter((c) => c.id !== id));
     await supabase.from('contas_pagar').delete().eq('id', id);
     carregarDados();
   };
@@ -377,7 +431,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col pb-20 md:pb-0">
-      {/* Cabeçalho */}
       <header className="bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between sticky top-0 z-20">
         <div className="flex items-center gap-2">
           <div className="bg-amber-500 p-2 rounded-lg text-slate-950 font-bold">
@@ -385,9 +438,15 @@ export default function App() {
           </div>
           <div>
             <h1 className="font-bold text-lg leading-tight text-amber-400">ChaveiroPRO</h1>
-            <span className="text-xs text-emerald-400 flex items-center gap-1">
-              ● Sincronizado na Nuvem
-            </span>
+            {erroConexao ? (
+              <span className="text-xs text-red-400 flex items-center gap-1">
+                <AlertCircle size={12} /> Erro: {erroConexao}
+              </span>
+            ) : (
+              <span className="text-xs text-emerald-400 flex items-center gap-1">
+                ● Sincronizado na Nuvem
+              </span>
+            )}
           </div>
         </div>
         <button 
@@ -399,7 +458,6 @@ export default function App() {
         </button>
       </header>
 
-      {/* Navegação Superior (Desktop) e Inferior (Mobile) */}
       <nav className="bg-slate-900 border-b border-slate-800 px-2 py-2 flex overflow-x-auto gap-1 sticky top-14 z-10">
         {[
           { id: 'pdv', label: 'PDV / Balcão', icon: ShoppingCart },
@@ -428,10 +486,7 @@ export default function App() {
         })}
       </nav>
 
-      {/* Conteúdo Principal */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 space-y-6">
-        
-        {/* ================= ABA 1: PDV / BALCÃO ================= */}
         {abaAtiva === 'pdv' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
@@ -470,7 +525,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Adicionar Serviço Avulso Rápido */}
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
                 <h3 className="font-bold text-sm text-slate-300 mb-3">Adicionar Mão de Obra / abertura / serviço avulso</h3>
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -498,7 +552,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Resumo do Carrinho */}
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
               <div>
                 <h2 className="font-bold text-amber-400 mb-3 flex items-center gap-2">
@@ -563,7 +616,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 2: ESTOQUE DE CHAVES ================= */}
         {abaAtiva === 'estoque' && (
           <div className="space-y-6">
             <form onSubmit={salvarNovaChave} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
@@ -661,7 +713,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 3: ORDENS DE SERVIÇO (OS) ================= */}
         {abaAtiva === 'os' && (
           <div className="space-y-6">
             <form onSubmit={criarOS} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
@@ -739,7 +790,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 4: AGENDA DE SOCORROS ================= */}
         {abaAtiva === 'agenda' && (
           <div className="space-y-6">
             <form onSubmit={criarAgendamento} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
@@ -826,10 +876,8 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 5: CAIXA E CONTAS A PAGAR ================= */}
         {abaAtiva === 'caixa' && (
           <div className="space-y-6">
-            {/* Cards de Resumo */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
                 <span className="text-xs text-slate-400 flex items-center gap-1">
@@ -852,7 +900,6 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Lançamento Manual e Extrato */}
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-amber-400">Extrato de Movimentações</h3>
@@ -914,7 +961,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Controle de Boletos e Contas a Pagar */}
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
                 <h3 className="font-bold text-amber-400">Controle de Boletos / Contas a Pagar</h3>
                 <form onSubmit={criarContaPagar} className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -980,7 +1026,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 6: CRM DE CLIENTES ================= */}
         {abaAtiva === 'clientes' && (
           <div className="space-y-6">
             <form onSubmit={criarCliente} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
@@ -1041,7 +1086,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 7: GERADOR DE ORÇAMENTOS ================= */}
         {abaAtiva === 'orcamento' && (
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 max-w-3xl mx-auto">
             <h2 className="font-bold text-amber-400">Gerador Rápido de Orçamento (WhatsApp)</h2>
@@ -1109,7 +1153,6 @@ export default function App() {
             </div>
           </div>
         )}
-
       </main>
     </div>
   );
