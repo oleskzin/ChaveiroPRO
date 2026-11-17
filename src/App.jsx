@@ -5,7 +5,8 @@ import {
   Plus, Trash2, Edit2, CheckCircle, Search, Phone, 
   MapPin, RefreshCw, ShoppingCart, ArrowUpCircle, ArrowDownCircle, 
   Share2, AlertCircle, X, Check, AlertTriangle, Filter, LayoutDashboard,
-  Download, ShieldCheck, Zap, Clock, Award, Calculator, Building2, Settings, CreditCard
+  Download, ShieldCheck, Zap, Clock, Award, Calculator, Building2, Settings,
+  CreditCard, UserCheck, Send, FolderClock
 } from 'lucide-react';
 
 export default function App() {
@@ -14,10 +15,10 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [erroConexao, setErroConexao] = useState(null);
 
-  //Configuração das Unidades (editável no app)
+  // Configuração das Unidades + Funcionário (editável no app)
   const [unidadesConfig, setUnidadesConfig] = useState([
-    { id: 'ponto1', nome: 'Ponto 1 (Principal)', endereco: 'Endereço do Ponto 1 - Sepetiba' },
-    { id: 'ponto2', nome: 'Ponto 2 (Filial)', endereco: 'Endereço do Ponto 2 - Sepetiba' }
+    { id: 'ponto1', nome: 'Ponto 1 (Principal)', endereco: 'Endereço do Ponto 1 - Sepetiba', funcionario_nome: 'Funcionário P1', funcionario_tel: '' },
+    { id: 'ponto2', nome: 'Ponto 2 (Filial)', endereco: 'Endereço do Ponto 2 - Sepetiba', funcionario_nome: 'Funcionário P2', funcionario_tel: '' }
   ]);
   const [modalConfigUnidades, setModalConfigUnidades] = useState(false);
 
@@ -29,6 +30,11 @@ export default function App() {
   const [agendamentos, setAgendamentos] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [tabelaPrecos, setTabelaPrecos] = useState([]);
+  const [orcamentosSalvos, setOrcamentosSalvos] = useState([]);
+
+  // ================= ESTADOS GLOBAIS DE ENVIO WHATSAPP =================
+  const [comprovanteAtivo, setComprovanteAtivo] = useState(null);
+  const [tarefaFuncionarioAtiva, setTarefaFuncionarioAtiva] = useState(null);
 
   // ================= ESTADOS DO PDV =================
   const [buscaPdv, setBuscaPdv] = useState('');
@@ -39,7 +45,6 @@ export default function App() {
   const [formaPgto, setFormaPgto] = useState('Pix');
   const [taxaCartaoIdPdv, setTaxaCartaoIdPdv] = useState('');
   const [clientePdv, setClientePdv] = useState({ nome: '', tel: '', obs: '' });
-  const [comprovanteAtivo, setComprovanteAtivo] = useState(null);
   const inputBuscaPdvRef = useRef(null);
 
   // ================= ESTADOS DA CALCULADORA / TABELA DE PREÇOS =================
@@ -63,15 +68,17 @@ export default function App() {
 
   // ================= ESTADOS DE OS, AGENDA E CLIENTES =================
   const [novaOS, setNovaOS] = useState({
-    cliente: '', tel: '', desc: '', valor: '', garantia: '90 dias', obs_tecnica: '',
-    itens_usados: [] // Array de { id, nome, qtd, custo }
+    cliente: '', tel: '', desc: '', valor: '',
+    forma_pgto: 'Receber na Entrega (Pix/Cartão)',
+    garantia: '90 dias', obs_tecnica: '',
+    itens_usados: []
   });
   const [itemTempOS, setItemTempOS] = useState({ chave_id: '', qtd: 1 });
 
   const [novoAgendamento, setNovoAgendamento] = useState({
     cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '',
-    taxa_deslocamento: 20, valor_estimado: 80,
-    itens_usados: [] // Array de { id, nome, qtd, custo }
+    taxa_deslocamento: 0, valor_estimado: 80,
+    itens_usados: []
   });
   const [itemTempAg, setItemTempAg] = useState({ chave_id: '', qtd: 1 });
 
@@ -85,10 +92,16 @@ export default function App() {
   const [novaConta, setNovaConta] = useState({ desc: '', valor: '', vencimento: '' });
   const [filtroPeriodoCaixa, setFiltroPeriodoCaixa] = useState('hoje');
 
-  // ================= ESTADOS DO ORÇAMENTO =================
-  const [orcamento, setOrcamento] = useState({ cliente: '', tel: '', itens: [{ desc: '', qtd: 1, valor: 0 }], obs: 'Validade: 7 dias. Garantia de 90 dias.' });
+  // ================= ESTADOS DO ORÇAMENTO (COM STANDBY) =================
+  const [orcamento, setOrcamento] = useState({
+    id: null,
+    cliente: '',
+    tel: '',
+    itens: [{ desc: '', qtd: 1, valor: 0 }],
+    obs: 'Validade: 7 dias. Garantia de 90 dias.'
+  });
+  const [filtroStatusOrcamento, setFiltroStatusOrcamento] = useState('standby'); // 'standby', 'aprovado', 'todos'
 
-  // Unidade operacional padrão para cadastros (se estiver em 'todas', salva no 'ponto1')
   const unidadeOperacional = unidadeAtiva === 'todas' ? 'ponto1' : unidadeAtiva;
   const infoUnidadeAtual = unidadesConfig.find((u) => u.id === unidadeOperacional) || unidadesConfig[0];
 
@@ -105,7 +118,8 @@ export default function App() {
         { data: ag },
         { data: cli },
         { data: tab },
-        { data: uni }
+        { data: uni },
+        { data: orcs }
       ] = await Promise.all([
         supabase.from('estoque').select('*').order('nome', { ascending: true }),
         supabase.from('transacoes').select('*').order('timestamp', { ascending: false }),
@@ -114,7 +128,8 @@ export default function App() {
         supabase.from('agendamentos').select('*').order('data', { ascending: true }),
         supabase.from('clientes').select('*').order('nome', { ascending: true }),
         supabase.from('tabela_precos').select('*').order('id', { ascending: true }),
-        supabase.from('unidades_config').select('*').order('id', { ascending: true })
+        supabase.from('unidades_config').select('*').order('id', { ascending: true }),
+        supabase.from('orcamentos').select('*').order('id', { ascending: false })
       ]);
 
       if (errEst) throw errEst;
@@ -126,6 +141,7 @@ export default function App() {
       if (cli) setClientes(cli);
       if (tab) setTabelaPrecos(tab);
       if (uni && uni.length > 0) setUnidadesConfig(uni);
+      if (orcs) setOrcamentosSalvos(orcs);
     } catch (err) {
       console.error('Erro ao buscar dados:', err);
       setErroConexao(err.message || 'Falha ao conectar com o Supabase.');
@@ -179,6 +195,7 @@ export default function App() {
   const osUnidade = ordensServico.filter(filtraUnidade);
   const agendaUnidade = agendamentos.filter(filtraUnidade);
   const contasUnidade = contasPagar.filter(filtraUnidade);
+  const orcamentosUnidade = orcamentosSalvos.filter(filtraUnidade);
 
   // ================= HELPER: AUTO-CADASTRO DE CLIENTE =================
   const garantirCadastroCliente = async (nome, tel, endereco = '', obsExtra = '') => {
@@ -198,7 +215,6 @@ export default function App() {
       setClientes((prev) => [...prev, novoCli]);
       await supabase.from('clientes').insert([novoCli]);
     } else {
-      // Atualiza telefone ou endereço caso estivesse em branco
       const novoTel = existente.tel || (tel || '').trim();
       const novoEnd = existente.endereco || (endereco || '').trim();
       const novaObs = obsExtra && !existente.obs?.includes(obsExtra)
@@ -210,7 +226,7 @@ export default function App() {
     }
   };
 
-  // ================= HELPER: ENVIAR COMPROVANTE LUISINHO CHAVEIRO =================
+  // ================= HELPER: ENVIAR COMPROVANTE AO CLIENTE =================
   const dispararComprovanteWhatsApp = (dados) => {
     const numeroLimpo = (dados.tel || '').replace(/\D/g, '');
     if (!numeroLimpo) {
@@ -228,7 +244,61 @@ export default function App() {
     window.open(`https://wa.me/${numeroComDDI}?text=${texto}`, '_blank');
   };
 
-  // Salvar configuração de nome/endereço dos 2 pontos
+  // ================= HELPER: ENVIAR FICHA DE SERVIÇO PARA O FUNCIONÁRIO =================
+  const prepararEnvioParaFuncionario = (tipo, registro) => {
+    const uniObj = unidadesConfig.find((u) => u.id === (registro.unidade || unidadeOperacional)) || infoUnidadeAtual;
+    const listaMat = Array.isArray(registro.itens_usados) && registro.itens_usados.length > 0
+      ? registro.itens_usados.map((m) => `${m.qtd}x ${m.nome || m.id}`).join(', ')
+      : 'Nenhum material específico baixado';
+
+    if (tipo === 'os') {
+      setTarefaFuncionarioAtiva({
+        titulo: `Ordem de Serviço #${registro.id.toString().slice(-4)}`,
+        unidadeNome: uniObj.nome,
+        funcionarioNome: uniObj.funcionario_nome || 'Funcionário',
+        funcionarioTel: uniObj.funcionario_tel || '',
+        cliente: registro.cliente,
+        clienteTel: registro.tel || 'Não informado',
+        endereco: 'Atendimento na Loja / Ver descrição',
+        servico: registro.desc,
+        materiais: listaMat,
+        valor: Number(registro.valor),
+        formaPgto: registro.forma_pgto || 'A combinar / Na entrega',
+        horario: registro.data
+      });
+    } else {
+      const totalSoc = Number(registro.valor_estimado || 0) + Number(registro.taxa_deslocamento || 0);
+      setTarefaFuncionarioAtiva({
+        titulo: `Socorro Externo (${registro.data} às ${registro.hora})`,
+        unidadeNome: uniObj.nome,
+        funcionarioNome: uniObj.funcionario_nome || 'Funcionário',
+        funcionarioTel: uniObj.funcionario_tel || '',
+        cliente: registro.cliente,
+        clienteTel: registro.tel || 'Não informado',
+        endereco: registro.endereco,
+        servico: registro.servico,
+        materiais: listaMat,
+        valor: totalSoc,
+        formaPgto: 'Receber no Local (Pix/Cartão/Dinheiro)',
+        horario: `${registro.data} às ${registro.hora}`
+      });
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const dispararTarefaFuncionarioWhatsApp = (dados) => {
+    const numeroLimpo = (dados.funcionarioTel || '').replace(/\D/g, '');
+    if (!numeroLimpo) {
+      alert('Informe o WhatsApp com DDD do funcionário (você pode deixá-lo salvo no ícone de engrenagem no topo).');
+      return;
+    }
+    const numeroComDDI = numeroLimpo.startsWith('55') && numeroLimpo.length >= 12 ? numeroLimpo : `55${numeroLimpo}`;
+
+    const texto = `🔧 *FICHA DE SERVIÇO - LUISINHO CHAVEIRO*%0A📍 *Unidade:* ${dados.unidadeNome}%0A📋 *Ref:* ${dados.titulo}%0A⏰ *Data/Hora:* ${dados.horario}%0A%0A👤 *Cliente:* ${dados.cliente}%0A📞 *Contato Cliente:* ${dados.clienteTel}%0A📌 *Endereço / Local:* ${dados.endereco}%0A%0A🛠 *O que fazer:*%0A${dados.servico}%0A%0A📦 *Materiais / Peças:*%0A${dados.materiais}%0A%0A💰 *Valor a Cobrar:* R$ ${Number(dados.valor).toFixed(2)}%0A💳 *Pagamento:* ${dados.formaPgto}`;
+    window.open(`https://wa.me/${numeroComDDI}?text=${texto}`, '_blank');
+  };
+
+  // Salvar configuração de nome/endereço/funcionário dos 2 pontos
   const salvarConfigUnidades = async (e) => {
     e.preventDefault();
     for (const u of unidadesConfig) {
@@ -288,7 +358,6 @@ export default function App() {
   const valorDescontoPdv = Number(descontoPdv || 0);
   const totalLiquidoPdv = Math.max(0, subtotalCarrinho - valorDescontoPdv);
 
-  // Cálculo da taxa de maquininha no PDV
   const taxaSelecionadaObj = taxasCartaoDisponiveis.find((t) => t.id.toString() === taxaCartaoIdPdv.toString());
   const percentualTaxaPdv = (formaPgto.includes('Cartão') && taxaSelecionadaObj) ? Number(taxaSelecionadaObj.valor || 0) : 0;
   const valorTaxaMaquininhaPdv = (totalLiquidoPdv * percentualTaxaPdv) / 100;
@@ -327,7 +396,6 @@ export default function App() {
       return;
     }
 
-    // Baixa múltipla no estoque
     for (const item of carrinho) {
       if (item.tipoItem === 'estoque') {
         const novaQtd = Math.max(0, Number(item.qtd) - Number(item.qtdVenda));
@@ -336,7 +404,6 @@ export default function App() {
       }
     }
 
-    // Auto-cadastrar cliente no CRM se informado
     if (clientePdv.nome) {
       await garantirCadastroCliente(clientePdv.nome, clientePdv.tel, '', `Compra PDV: ${resumoDesc}`);
     }
@@ -384,7 +451,6 @@ export default function App() {
   const taxaSimuladorObj = taxasCartaoDisponiveis.find((t) => t.id.toString() === calcTaxaId.toString());
   const percTaxaSimulador = taxaSimuladorObj ? Number(taxaSimuladorObj.valor || 0) : 0;
 
-  // Se repassar a taxa ao cliente, embute para receber o subtotal cheio
   const totalFinalSimulador = (calcRepassarTaxa && percTaxaSimulador > 0 && percTaxaSimulador < 100)
     ? subtotalSimulador / (1 - percTaxaSimulador / 100)
     : subtotalSimulador;
@@ -401,18 +467,43 @@ export default function App() {
     return partes.join(' + ') || 'Serviço Personalizado';
   };
 
-  const enviarCotacaoSimuladorWhatsApp = () => {
-    const numeroLimpo = (calcCliente.tel || '').replace(/\D/g, '');
-    if (!numeroLimpo) {
+  const salvarSimuladorEmStandby = async (enviarNoZap = false) => {
+    if (totalFinalSimulador <= 0) return;
+    if (enviarNoZap && !calcCliente.tel.replace(/\D/g, '')) {
       alert('Digite o WhatsApp do cliente com DDD para enviar a cotação.');
       return;
     }
-    const numeroComDDI = numeroLimpo.startsWith('55') && numeroLimpo.length >= 12 ? numeroLimpo : `55${numeroLimpo}`;
-    const resumo = montarResumoSimulador();
-    const infoParcela = taxaSimuladorObj ? `%0A💳 *Opção no Cartão (${taxaSimuladorObj.nome}):* R$ ${totalFinalSimulador.toFixed(2)}` : '';
 
-    const texto = `*LUISINHO CHAVEIRO - COTAÇÃO DE SERVIÇO*%0A📍 *Unidade:* ${infoUnidadeAtual.nome}%0A👤 *Cliente:* ${calcCliente.nome || 'Cliente'}%0A%0A🔧 *Serviço cotado:*%0A- ${resumo}%0A%0A💰 *Valor à vista (Pix/Dinheiro):* R$ ${subtotalSimulador.toFixed(2)}${infoParcela}%0A%0A_Podemos agendar ou confirmar o atendimento?_`;
-    window.open(`https://wa.me/${numeroComDDI}?text=${texto}`, '_blank');
+    const resumo = montarResumoSimulador();
+    const novoOrc = {
+      id: Date.now(),
+      cliente: calcCliente.nome || 'Cliente Cotação',
+      tel: calcCliente.tel || '',
+      itens: [{ desc: resumo, qtd: 1, valor: Number(totalFinalSimulador.toFixed(2)) }],
+      total: Number(totalFinalSimulador.toFixed(2)),
+      obs: taxaSimuladorObj ? `Opção Cartão: ${taxaSimuladorObj.nome} | Validade: 7 dias.` : 'Validade: 7 dias. Garantia: 90 dias.',
+      status: 'standby',
+      data: new Date().toLocaleDateString('pt-BR'),
+      unidade: unidadeOperacional
+    };
+
+    await supabase.from('orcamentos').insert([novoOrc]);
+    if (calcCliente.nome) {
+      await garantirCadastroCliente(calcCliente.nome, calcCliente.tel, '', `Orçamento em standby: ${resumo}`);
+    }
+
+    if (enviarNoZap) {
+      const numeroLimpo = calcCliente.tel.replace(/\D/g, '');
+      const numeroComDDI = numeroLimpo.startsWith('55') && numeroLimpo.length >= 12 ? numeroLimpo : `55${numeroLimpo}`;
+      const infoParcela = taxaSimuladorObj ? `%0A💳 *No Cartão (${taxaSimuladorObj.nome}):* R$ ${totalFinalSimulador.toFixed(2)}` : '';
+      const texto = `*LUISINHO CHAVEIRO - ORÇAMENTO*%0A📍 *Unidade:* ${infoUnidadeAtual.nome}%0A👤 *Cliente:* ${novoOrc.cliente}%0A%0A🔧 *Serviço cotado:*%0A- ${resumo}%0A%0A💰 *Valor à vista (Pix/Dinheiro):* R$ ${subtotalSimulador.toFixed(2)}${infoParcela}%0A%0A_Seu orçamento ficou salvo em nosso sistema! Podemos confirmar?_`;
+      window.open(`https://wa.me/${numeroComDDI}?text=${texto}`, '_blank');
+    } else {
+      alert('Cotação salva na fila de Orçamentos em Standby!');
+    }
+
+    setCalcCliente({ nome: '', tel: '' });
+    carregarDados();
   };
 
   const enviarSimuladorParaPDV = () => {
@@ -552,7 +643,7 @@ export default function App() {
   const capitalTotalEstoque = estoqueUnidade.reduce((acc, i) => acc + Number(i.custo || 0) * Number(i.qtd || 0), 0);
   const potencialVendaEstoque = estoqueUnidade.reduce((acc, i) => acc + Number(i.venda || 0) * Number(i.qtd || 0), 0);
 
-  // ================= FUNÇÕES DE ORDENS DE SERVIÇO (COM MULTI-ITENS) =================
+  // ================= FUNÇÕES DE ORDENS DE SERVIÇO (COM MULTI-ITENS E ENVIO AO FUNCIONÁRIO) =================
   const adicionarMaterialNaOS = () => {
     if (!itemTempOS.chave_id) return;
     const ch = estoqueUnidade.find((e) => e.id === itemTempOS.chave_id);
@@ -572,8 +663,8 @@ export default function App() {
     setNovaOS({ ...novaOS, itens_usados: novaOS.itens_usados.filter((_, i) => i !== idx) });
   };
 
-  const criarOS = async (e) => {
-    e.preventDefault();
+  const criarOS = async (e, encaminharAoFuncionario = false) => {
+    if (e) e.preventDefault();
     if (!novaOS.cliente || !novaOS.desc || !novaOS.valor) return;
 
     const custoTotalMateriais = novaOS.itens_usados.reduce((acc, m) => acc + Number(m.custo || 0) * Number(m.qtd || 1), 0);
@@ -594,6 +685,7 @@ export default function App() {
       chave_id: novaOS.itens_usados[0]?.id || null,
       qtd_copias: novaOS.itens_usados[0]?.qtd || 0,
       itens_usados: novaOS.itens_usados,
+      forma_pgto: novaOS.forma_pgto || 'Receber na Entrega',
       status: 'pendente',
       data: new Date().toLocaleDateString('pt-BR'),
       unidade: unidadeOperacional
@@ -605,10 +697,17 @@ export default function App() {
       return;
     }
 
-    // Já garante o cadastro do cliente no ato da emissão da OS
     await garantirCadastroCliente(novaOS.cliente, novaOS.tel, '', `OS: ${descCompleta}`);
 
-    setNovaOS({ cliente: '', tel: '', desc: '', valor: '', garantia: '90 dias', obs_tecnica: '', itens_usados: [] });
+    if (encaminharAoFuncionario) {
+      prepararEnvioParaFuncionario('os', itemOS);
+    }
+
+    setNovaOS({
+      cliente: '', tel: '', desc: '', valor: '',
+      forma_pgto: 'Receber na Entrega (Pix/Cartão)',
+      garantia: '90 dias', obs_tecnica: '', itens_usados: []
+    });
     carregarDados();
   };
 
@@ -637,7 +736,6 @@ export default function App() {
     };
     await supabase.from('transacoes').insert([novaTrans]);
 
-    // Dar baixa em todos os materiais usados na OS
     for (const mat of listaMat) {
       const chaveUsada = estoque.find((c) => c.id === mat.id);
       if (chaveUsada) {
@@ -675,7 +773,7 @@ export default function App() {
     carregarDados();
   };
 
-  // ================= FUNÇÕES DA AGENDA DE SOCORROS (COM MULTI-ITENS E RECIBO) =================
+  // ================= FUNÇÕES DA AGENDA DE SOCORROS =================
   const adicionarMaterialNoSocorro = () => {
     if (!itemTempAg.chave_id) return;
     const ch = estoqueUnidade.find((e) => e.id === itemTempAg.chave_id);
@@ -694,8 +792,8 @@ export default function App() {
     setNovoAgendamento({ ...novoAgendamento, itens_usados: novoAgendamento.itens_usados.filter((_, i) => i !== idx) });
   };
 
-  const criarAgendamento = async (e) => {
-    e.preventDefault();
+  const criarAgendamento = async (e, encaminharAoFuncionario = false) => {
+    if (e) e.preventDefault();
     if (!novoAgendamento.cliente || !novoAgendamento.endereco || !novoAgendamento.servico) return;
 
     const custoMateriais = novoAgendamento.itens_usados.reduce((acc, m) => acc + Number(m.custo || 0) * Number(m.qtd || 1), 0);
@@ -724,7 +822,11 @@ export default function App() {
 
     await garantirCadastroCliente(novoAgendamento.cliente, novoAgendamento.tel, novoAgendamento.endereco, `Socorro: ${novoAgendamento.servico}`);
 
-    setNovoAgendamento({ cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '', taxa_deslocamento: 20, valor_estimado: 80, itens_usados: [] });
+    if (encaminharAoFuncionario) {
+      prepararEnvioParaFuncionario('socorro', itemAg);
+    }
+
+    setNovoAgendamento({ cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '', taxa_deslocamento: 0, valor_estimado: 80, itens_usados: [] });
     carregarDados();
   };
 
@@ -747,7 +849,6 @@ export default function App() {
     };
     await supabase.from('transacoes').insert([novaTrans]);
 
-    // Dar baixa nos materiais usados no socorro
     for (const mat of listaMat) {
       const chaveUsada = estoque.find((c) => c.id === mat.id);
       if (chaveUsada) {
@@ -807,7 +908,7 @@ export default function App() {
     carregarDados();
   };
 
-  // ================= FUNÇÕES DO CAIXA E BOLETOS (COM OPÇÃO SEM DÉBITO) =================
+  // ================= FUNÇÕES DO CAIXA E BOLETOS =================
   const adicionarTransacaoManual = async (e) => {
     e.preventDefault();
     if (!novaTransacao.desc || !novaTransacao.valor) return;
@@ -881,7 +982,6 @@ export default function App() {
     carregarDados();
   };
 
-  // Opção de dar baixa no boleto SEM debitar do caixa ou debitando
   const darBaixaBoleto = async (conta, debitarDoCaixa = false) => {
     if (conta.status === 'pago') return;
     await supabase.from('contas_pagar').update({ status: 'pago' }).eq('id', conta.id);
@@ -959,9 +1059,14 @@ export default function App() {
   const entradasDinheiro = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && t.forma.includes('Dinheiro')).reduce((acc, t) => acc + Number(t.valor), 0);
   const entradasCartao = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && t.forma.includes('Cartão')).reduce((acc, t) => acc + Number(t.valor), 0);
 
-  // ================= FUNÇÕES DO ORÇAMENTO =================
+  // ================= FUNÇÕES DO ORÇAMENTO (COM FILA DE STANDBY) =================
   const adicionarLinhaOrcamento = () => {
     setOrcamento({ ...orcamento, itens: [...orcamento.itens, { desc: '', qtd: 1, valor: 0 }] });
+  };
+
+  const removerLinhaOrcamento = (index) => {
+    if (orcamento.itens.length <= 1) return;
+    setOrcamento({ ...orcamento, itens: orcamento.itens.filter((_, i) => i !== index) });
   };
 
   const atualizarItemOrcamento = (index, campo, valor) => {
@@ -972,42 +1077,110 @@ export default function App() {
 
   const totalOrcamento = orcamento.itens.reduce((acc, i) => acc + Number(i.qtd) * Number(i.valor), 0);
 
-  const enviarOrcamentoWhatsApp = async () => {
-    const numeroLimpo = orcamento.tel.replace(/\D/g, '');
+  const dispararTextoOrcamentoWhatsApp = (orcObj) => {
+    const numeroLimpo = (orcObj.tel || '').replace(/\D/g, '');
     if (!numeroLimpo) {
-      alert('Preencha o WhatsApp do cliente (com DDD) antes de enviar o orçamento.');
+      alert('Preencha o WhatsApp do cliente (com DDD) para enviar.');
       return;
     }
-    if (orcamento.cliente) {
-      await garantirCadastroCliente(orcamento.cliente, orcamento.tel, '', 'Orçamento enviado');
-    }
+    const uniObj = unidadesConfig.find((u) => u.id === (orcObj.unidade || unidadeOperacional)) || infoUnidadeAtual;
     const numeroComDDI = numeroLimpo.startsWith('55') && numeroLimpo.length >= 12 ? numeroLimpo : `55${numeroLimpo}`;
-    const linhas = orcamento.itens.map((i) => `- ${i.qtd}x ${i.desc}: R$ ${(i.qtd * i.valor).toFixed(2)}`).join('%0A');
-    const texto = `*LUISINHO CHAVEIRO - ORÇAMENTO*%0A📍 *Unidade:* ${infoUnidadeAtual.nome}%0A📌 *Local:* ${infoUnidadeAtual.endereco}%0A👤 *Cliente:* ${orcamento.cliente || 'Não informado'}%0A%0A*Itens / Serviços:*%0A${linhas}%0A%0A💰 *Total:* R$ ${totalOrcamento.toFixed(2)}%0A_${orcamento.obs}_`;
+    const listaItens = Array.isArray(orcObj.itens) ? orcObj.itens : [];
+    const linhas = listaItens.map((i) => `- ${i.qtd}x ${i.desc}: R$ ${(Number(i.qtd) * Number(i.valor)).toFixed(2)}`).join('%0A');
+    const texto = `*LUISINHO CHAVEIRO - ORÇAMENTO*%0A📍 *Unidade:* ${uniObj.nome}%0A📌 *Local:* ${uniObj.endereco}%0A👤 *Cliente:* ${orcObj.cliente || 'Cliente'}%0A%0A*Itens / Serviços:*%0A${linhas}%0A%0A💰 *Total:* R$ ${Number(orcObj.total).toFixed(2)}%0A_${orcObj.obs || 'Validade: 7 dias.'}_`;
     window.open(`https://wa.me/${numeroComDDI}?text=${texto}`, '_blank');
   };
 
-  const converterOrcamentoEmOS = async () => {
-    if (totalOrcamento <= 0) return;
-    const resumoItens = orcamento.itens.filter((i) => i.desc).map((i) => `${i.qtd}x ${i.desc}`).join(', ');
-    const itemOS = {
-      id: Date.now(),
-      cliente: orcamento.cliente || 'Cliente Orçamento',
+  const salvarOrcamentoStandby = async (enviarZap = false) => {
+    const itensValidos = orcamento.itens.filter((i) => i.desc.trim() !== '');
+    if (itensValidos.length === 0 || totalOrcamento <= 0) {
+      alert('Adicione pelo menos 1 item com descrição e valor no orçamento.');
+      return;
+    }
+    if (enviarZap && !(orcamento.tel || '').replace(/\D/g, '')) {
+      alert('Preencha o WhatsApp do cliente com DDD antes de enviar.');
+      return;
+    }
+
+    const registroOrc = {
+      id: orcamento.id || Date.now(),
+      cliente: orcamento.cliente || 'Cliente s/ Nome',
       tel: orcamento.tel || '',
-      desc: resumoItens || 'Serviço aprovado via Orçamento',
-      valor: totalOrcamento,
-      custo_insumo: 0,
-      itens_usados: [],
-      status: 'pendente',
+      itens: itensValidos,
+      total: totalOrcamento,
+      obs: orcamento.obs,
+      status: 'standby',
       data: new Date().toLocaleDateString('pt-BR'),
       unidade: unidadeOperacional
     };
 
-    await supabase.from('ordens_servico').insert([itemOS]);
+    const { error } = await supabase.from('orcamentos').upsert([registroOrc]);
+    if (error) {
+      alert('Erro ao salvar orçamento: ' + error.message);
+      return;
+    }
+
     if (orcamento.cliente) {
-      await garantirCadastroCliente(orcamento.cliente, orcamento.tel, '', `OS via Orçamento: ${resumoItens}`);
+      await garantirCadastroCliente(orcamento.cliente, orcamento.tel, '', 'Orçamento em Standby');
+    }
+
+    if (enviarZap) {
+      dispararTextoOrcamentoWhatsApp(registroOrc);
+    }
+
+    // Limpa o formulário para permitir criar outro orçamento imediatamente
+    setOrcamento({
+      id: null,
+      cliente: '',
+      tel: '',
+      itens: [{ desc: '', qtd: 1, valor: 0 }],
+      obs: 'Validade: 7 dias. Garantia de 90 dias.'
+    });
+    carregarDados();
+  };
+
+  const carregarOrcamentoParaEdicao = (orc) => {
+    setOrcamento({
+      id: orc.id,
+      cliente: orc.cliente,
+      tel: orc.tel || '',
+      itens: Array.isArray(orc.itens) && orc.itens.length > 0 ? orc.itens : [{ desc: '', qtd: 1, valor: 0 }],
+      obs: orc.obs || 'Validade: 7 dias. Garantia de 90 dias.'
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const aprovarOrcamentoVirarOS = async (orc) => {
+    const listaItens = Array.isArray(orc.itens) ? orc.itens : [];
+    const resumoItens = listaItens.map((i) => `${i.qtd}x ${i.desc}`).join(', ');
+
+    const itemOS = {
+      id: Date.now(),
+      cliente: orc.cliente || 'Cliente Orçamento',
+      tel: orc.tel || '',
+      desc: resumoItens || 'Serviço aprovado via Orçamento',
+      valor: Number(orc.total),
+      custo_insumo: 0,
+      itens_usados: [],
+      forma_pgto: 'Receber na Entrega (Pix/Cartão)',
+      status: 'pendente',
+      data: new Date().toLocaleDateString('pt-BR'),
+      unidade: orc.unidade || unidadeOperacional
+    };
+
+    await supabase.from('ordens_servico').insert([itemOS]);
+    await supabase.from('orcamentos').update({ status: 'aprovado' }).eq('id', orc.id);
+
+    if (orc.cliente) {
+      await garantirCadastroCliente(orc.cliente, orc.tel, '', `Orçamento aprovado -> OS: ${resumoItens}`);
     }
     setAbaAtiva('os');
+    carregarDados();
+  };
+
+  const excluirOrcamentoSalvo = async (id) => {
+    if (!window.confirm('Remover este orçamento da lista?')) return;
+    await supabase.from('orcamentos').delete().eq('id', id);
     carregarDados();
   };
 
@@ -1020,6 +1193,7 @@ export default function App() {
   const osPendentes = osUnidade.filter((o) => o.status !== 'concluida');
   const socorrosPendentes = agendaUnidade.filter((a) => a.status !== 'concluido');
   const boletosPendentes = contasUnidade.filter((c) => c.status === 'pendente');
+  const orcamentosEmStandby = orcamentosUnidade.filter((o) => o.status === 'standby');
 
   const abasMenu = [
     { id: 'dashboard', label: 'Hoje', icon: LayoutDashboard },
@@ -1027,10 +1201,10 @@ export default function App() {
     { id: 'simulador', label: 'Tabela/Calc', icon: Calculator },
     { id: 'os', label: `OS (${osPendentes.length})`, icon: Wrench },
     { id: 'agenda', label: `Socorros (${socorrosPendentes.length})`, icon: Calendar },
+    { id: 'orcamento', label: `Orçamentos (${orcamentosEmStandby.length})`, icon: FileText },
     { id: 'caixa', label: 'Caixa/Boletos', icon: DollarSign },
-    { id: 'estoque', label: `Estoque`, icon: Package },
+    { id: 'estoque', label: 'Estoque', icon: Package },
     { id: 'clientes', label: 'Clientes', icon: Users },
-    { id: 'orcamento', label: 'Orçamento', icon: FileText },
   ];
 
   return (
@@ -1056,7 +1230,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Seletor de Ponto / Unidade */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
               {unidadesConfig.map((u) => (
@@ -1083,7 +1256,7 @@ export default function App() {
             <button
               onClick={() => setModalConfigUnidades(true)}
               className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 text-slate-300"
-              title="Configurar endereços dos Pontos"
+              title="Configurar endereços e WhatsApp do Funcionário"
             >
               <Settings size={15} />
             </button>
@@ -1098,34 +1271,34 @@ export default function App() {
         </div>
       </header>
 
-      {/* MODAL PARA EDITAR NOME E ENDEREÇO DOS 2 PONTOS */}
+      {/* MODAL PARA EDITAR ENDEREÇOS E WHATSAPP DO FUNCIONÁRIO DE CADA PONTO */}
       {modalConfigUnidades && (
-        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <form onSubmit={salvarConfigUnidades} className="bg-slate-900 border border-slate-700 rounded-xl p-4 max-w-md w-full space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-amber-400 flex items-center gap-2">
-                <Building2 size={18} /> Endereços — Luisinho Chaveiro
+                <Building2 size={18} /> Unidades & Funcionários
               </h3>
               <button type="button" onClick={() => setModalConfigUnidades(false)} className="text-slate-400">
                 <X size={18} />
               </button>
             </div>
             <p className="text-xs text-slate-400">
-              Estes dados saem automaticamente no cabeçalho do comprovante e orçamento enviado ao cliente no WhatsApp.
+              Configure o endereço de cada ponto (sai no comprovante do cliente) e o WhatsApp do funcionário responsável por receber as Ordens de Serviço.
             </p>
             {unidadesConfig.map((uni, idx) => (
               <div key={uni.id} className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
                 <span className="text-xs font-bold text-amber-400 uppercase">{uni.id}</span>
                 <input
                   type="text"
-                  placeholder="Nome da Unidade (Ex: Loja 1 - Praça)"
+                  placeholder="Nome da Unidade (Ex: Ponto 1 - Matriz)"
                   value={uni.nome}
                   onChange={(e) => {
                     const copia = [...unidadesConfig];
                     copia[idx].nome = e.target.value;
                     setUnidadesConfig(copia);
                   }}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
                 />
                 <input
                   type="text"
@@ -1136,18 +1309,42 @@ export default function App() {
                     copia[idx].endereco = e.target.value;
                     setUnidadesConfig(copia);
                   }}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
                 />
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <input
+                    type="text"
+                    placeholder="Nome Funcionário"
+                    value={uni.funcionario_nome || ''}
+                    onChange={(e) => {
+                      const copia = [...unidadesConfig];
+                      copia[idx].funcionario_nome = e.target.value;
+                      setUnidadesConfig(copia);
+                    }}
+                    className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-xs"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="WhatsApp Funcionário (DDD)"
+                    value={uni.funcionario_tel || ''}
+                    onChange={(e) => {
+                      const copia = [...unidadesConfig];
+                      copia[idx].funcionario_tel = e.target.value;
+                      setUnidadesConfig(copia);
+                    }}
+                    className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-xs"
+                  />
+                </div>
               </div>
             ))}
             <button type="submit" className="w-full bg-amber-500 text-slate-950 font-bold py-2.5 rounded-lg text-sm">
-              Salvar Endereços
+              Salvar Configurações
             </button>
           </form>
         </div>
       )}
 
-      {/* BARRA DE NAVEGAÇÃO SUPERIOR (TABLET/PC E SCROLL MOBILE) */}
+      {/* BARRA DE NAVEGAÇÃO SUPERIOR */}
       <nav className="bg-slate-900 border-b border-slate-800 px-2 py-2 flex overflow-x-auto gap-1 sticky top-[57px] z-20 no-scrollbar">
         {abasMenu.map((aba) => {
           const Icone = aba.icon;
@@ -1168,7 +1365,53 @@ export default function App() {
         })}
       </nav>
 
-      {/* PAINEL GLOBAL DE ENVIO DE COMPROVANTE WHATSAPP (APARECE APÓS VENDA PDV, OS OU SOCORRO) */}
+      {/* PAINEL GLOBAL 1: ENCAMINHAR TAREFA / OS PARA O WHATSAPP DO FUNCIONÁRIO */}
+      {tarefaFuncionarioAtiva && (
+        <div className="max-w-6xl w-full mx-auto px-4 pt-4">
+          <div className="bg-sky-950/90 border-2 border-sky-500 p-4 rounded-xl space-y-3 shadow-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-[11px] uppercase tracking-wider text-sky-300 font-bold flex items-center gap-1">
+                  <UserCheck size={14} /> Encaminhar Serviço para Funcionário ({tarefaFuncionarioAtiva.unidadeNome})
+                </span>
+                <h3 className="font-bold text-base text-white mt-0.5">
+                  {tarefaFuncionarioAtiva.titulo} — Cliente: {tarefaFuncionarioAtiva.cliente}
+                </h3>
+              </div>
+              <button onClick={() => setTarefaFuncionarioAtiva(null)} className="text-slate-300 hover:text-white p-1">
+                <X size={20} />
+              </button>
+            </div>
+            <p className="text-xs text-sky-200">
+              <strong>Serviço:</strong> {tarefaFuncionarioAtiva.servico} | <strong>Cobrar:</strong> R$ {Number(tarefaFuncionarioAtiva.valor).toFixed(2)} ({tarefaFuncionarioAtiva.formaPgto})
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input
+                type="text"
+                placeholder="Nome do Funcionário"
+                value={tarefaFuncionarioAtiva.funcionarioNome}
+                onChange={(e) => setTarefaFuncionarioAtiva({ ...tarefaFuncionarioAtiva, funcionarioNome: e.target.value })}
+                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white"
+              />
+              <input
+                type="tel"
+                placeholder="WhatsApp do Funcionário com DDD *"
+                value={tarefaFuncionarioAtiva.funcionarioTel}
+                onChange={(e) => setTarefaFuncionarioAtiva({ ...tarefaFuncionarioAtiva, funcionarioTel: e.target.value })}
+                className="bg-slate-950 border border-sky-400 rounded-lg px-3 py-2.5 text-sm text-white font-semibold"
+              />
+              <button
+                onClick={() => dispararTarefaFuncionarioWhatsApp(tarefaFuncionarioAtiva)}
+                className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2"
+              >
+                <Send size={16} /> Enviar Ficha pro Funcionário
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PAINEL GLOBAL 2: ENVIO DE COMPROVANTE WHATSAPP AO CLIENTE */}
       {comprovanteAtivo && (
         <div className="max-w-6xl w-full mx-auto px-4 pt-4">
           <div className="bg-emerald-950/90 border-2 border-emerald-500 p-4 rounded-xl space-y-3 shadow-lg">
@@ -1222,13 +1465,13 @@ export default function App() {
               </div>
 
               <div onClick={() => setAbaAtiva('os')} className="cursor-pointer bg-slate-900 hover:border-amber-500/50 transition p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">OS Abertas</span>
+                <span className="text-xs text-slate-400">OS em Aberto</span>
                 <p className="text-xl sm:text-2xl font-bold text-amber-400 mt-1">{osPendentes.length} serviço(s)</p>
               </div>
 
-              <div onClick={() => setAbaAtiva('agenda')} className="cursor-pointer bg-slate-900 hover:border-sky-500/50 transition p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Socorros Pendentes</span>
-                <p className="text-xl sm:text-2xl font-bold text-sky-400 mt-1">{socorrosPendentes.length} chamado(s)</p>
+              <div onClick={() => setAbaAtiva('orcamento')} className="cursor-pointer bg-slate-900 hover:border-sky-500/50 transition p-3.5 rounded-xl border border-slate-800">
+                <span className="text-xs text-slate-400">Orçamentos em Standby</span>
+                <p className="text-xl sm:text-2xl font-bold text-sky-400 mt-1">{orcamentosEmStandby.length} aguardando</p>
               </div>
 
               <div onClick={() => { setAbaAtiva('caixa'); setFiltroPeriodoCaixa('areceber'); }} className="cursor-pointer bg-slate-900 hover:border-purple-500/50 transition p-3.5 rounded-xl border border-slate-800">
@@ -1249,10 +1492,10 @@ export default function App() {
                   <Calculator size={16} /> Simular Preço
                 </button>
                 <button onClick={() => setAbaAtiva('os')} className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-slate-700">
-                  <Wrench size={16} /> Nova OS
+                  <Wrench size={16} /> Emitir OS
                 </button>
-                <button onClick={() => setAbaAtiva('agenda')} className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-slate-700">
-                  <Calendar size={16} /> Novo Socorro
+                <button onClick={() => setAbaAtiva('orcamento')} className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-slate-700">
+                  <FolderClock size={16} /> Orçamentos ({orcamentosEmStandby.length})
                 </button>
               </div>
             </div>
@@ -1312,7 +1555,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 1: PDV / BALCÃO (COM EDIÇÃO DE PREÇO, CADASTRO CLIENTE E TAXA CARTÃO) ================= */}
+        {/* ================= ABA 1: PDV / BALCÃO ================= */}
         {abaAtiva === 'pdv' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 space-y-4">
@@ -1352,7 +1595,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Atalhos da Tabela de Serviços + Serviço Avulso */}
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
                 <h3 className="font-bold text-sm text-slate-300">Serviços Rápidos da Tabela ou Mão de Obra Avulsa</h3>
                 <div className="flex flex-wrap gap-1.5">
@@ -1395,14 +1637,12 @@ export default function App() {
               </div>
             </div>
 
-            {/* COMANDA ATUAL COM EDIÇÃO DE PREÇO UNITÁRIO E CADASTRO AUTOMÁTICO DO CLIENTE */}
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4">
               <div className="space-y-3">
                 <h2 className="font-bold text-amber-400 flex items-center gap-2">
                   <ShoppingCart size={18} /> Comanda / Nota de Venda
                 </h2>
 
-                {/* Bloco de Identificação Rápida do Cliente (Salva automático no banco ao fechar venda) */}
                 <div className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-amber-400 uppercase">Cliente (Salva automático na base)</span>
@@ -1447,7 +1687,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Lista de Itens com Preço Unitário Editável */}
                 {carrinho.length === 0 ? (
                   <p className="text-slate-500 text-xs py-6 text-center">Toque nas chaves ou serviços para montar a nota.</p>
                 ) : (
@@ -1477,7 +1716,6 @@ export default function App() {
                               value={item.precoEditado}
                               onChange={(e) => alterarPrecoItemCarrinho(idx, e.target.value)}
                               className="w-20 bg-slate-900 border border-amber-500/40 rounded px-2 py-1 text-xs font-bold text-amber-400 text-right"
-                              title="Editar preço unitário desta venda"
                             />
                           </div>
                         </div>
@@ -1557,14 +1795,13 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 2: SIMULADOR DE PREÇOS & TABELA EDITÁVEL NO APP ================= */}
+        {/* ================= ABA 2: SIMULADOR DE PREÇOS & TABELA EDITÁVEL ================= */}
         {abaAtiva === 'simulador' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Calculadora de Preço Dinâmica */}
               <div className="lg:col-span-2 bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
                 <h2 className="font-bold text-amber-400 flex items-center gap-2">
-                  <Calculator size={18} /> Calculadora Rápida de Serviço (Passar Preço ao Cliente)
+                  <Calculator size={18} /> Calculadora Rápida de Serviço
                 </h2>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1625,7 +1862,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Variáveis / Acréscimos de Área e Urgência */}
                 <div>
                   <label className="text-xs text-slate-400 block mb-2">3. Variáveis do Caso (Área de Cobertura / Horário / Dificuldade)</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1653,7 +1889,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Simulação de Maquininha e Repasse de Taxa ao Cliente */}
                 <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
@@ -1666,7 +1901,7 @@ export default function App() {
                         onChange={(e) => setCalcRepassarTaxa(e.target.checked)}
                         className="rounded"
                       />
-                      Repassar taxa da maquininha ao cliente
+                      Repassar taxa ao cliente
                     </label>
                   </div>
                   <select
@@ -1682,7 +1917,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Painel de Resultado da Cotação */}
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4">
                 <div className="space-y-3">
                   <h3 className="font-bold text-amber-400">Resumo da Cotação</h3>
@@ -1696,11 +1930,11 @@ export default function App() {
                       <span>R$ {valorBaseCalc.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Acréscimos (Área/Horário):</span>
+                      <span className="text-slate-400">Acréscimos:</span>
                       <span>+ R$ {valorAdicionaisCalc.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between font-bold text-slate-200 pt-1 border-t border-slate-800">
-                      <span>Valor no Pix / Dinheiro:</span>
+                      <span>À vista (Pix / Dinheiro):</span>
                       <span className="text-emerald-400">R$ {subtotalSimulador.toFixed(2)}</span>
                     </div>
                     {taxaSimuladorObj && (
@@ -1714,14 +1948,14 @@ export default function App() {
                   <div className="space-y-2 pt-2">
                     <input
                       type="text"
-                      placeholder="Nome do Cliente (Opcional)"
+                      placeholder="Nome do Cliente"
                       value={calcCliente.nome}
                       onChange={(e) => setCalcCliente({ ...calcCliente, nome: e.target.value })}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
                     />
                     <input
                       type="tel"
-                      placeholder="WhatsApp com DDD (Para enviar cotação)"
+                      placeholder="WhatsApp com DDD"
                       value={calcCliente.tel}
                       onChange={(e) => setCalcCliente({ ...calcCliente, tel: e.target.value })}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
@@ -1732,32 +1966,38 @@ export default function App() {
                 <div className="space-y-2">
                   <button
                     type="button"
-                    onClick={enviarCotacaoSimuladorWhatsApp}
+                    onClick={() => salvarSimuladorEmStandby(true)}
                     className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
                   >
-                    <Share2 size={15} /> Enviar Cotação no WhatsApp
+                    <Share2 size={15} /> Salvar Standby & Enviar WhatsApp
                   </button>
-                  <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => salvarSimuladorEmStandby(false)}
+                    className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5"
+                  >
+                    <FolderClock size={15} /> Só Salvar em Standby
+                  </button>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
                     <button
                       type="button"
                       onClick={enviarSimuladorParaPDV}
-                      className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-lg text-xs"
+                      className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 rounded-lg text-xs"
                     >
                       Jogar pro PDV
                     </button>
                     <button
                       type="button"
                       onClick={enviarSimuladorParaOS}
-                      className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-2.5 rounded-lg text-xs border border-slate-700"
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-2 rounded-lg text-xs border border-slate-700"
                     >
-                      Virar OS
+                      Virar OS Direto
                     </button>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* GERENCIADOR DA TABELA DE SERVIÇOS, MARCAS E TAXAS DA MAQUININHA */}
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
               <h3 className="font-bold text-amber-400">
                 Gerenciar Repertório de Preços, Marcas de Fechaduras e Taxas da Maquininha
@@ -1826,18 +2066,10 @@ export default function App() {
                       <span className="font-bold text-emerald-400">
                         {item.tipo_valor === 'percentual' ? `${item.valor}%` : `R$ ${Number(item.valor).toFixed(2)}`}
                       </span>
-                      <button
-                        onClick={() => setNovoItemTabela(item)}
-                        className="text-amber-400 p-1"
-                        title="Editar"
-                      >
+                      <button onClick={() => setNovoItemTabela(item)} className="text-amber-400 p-1">
                         <Edit2 size={14} />
                       </button>
-                      <button
-                        onClick={() => excluirItemTabelaPrecos(item.id)}
-                        className="text-red-400 p-1"
-                        title="Excluir"
-                      >
+                      <button onClick={() => excluirItemTabelaPrecos(item.id)} className="text-red-400 p-1">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -1848,10 +2080,10 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 3: ORDENS DE SERVIÇO (COM MULTI-MATERIAIS E AUTO-CADASTRO CLIENTE) ================= */}
+        {/* ================= ABA 3: ORDENS DE SERVIÇO (COM ENCAMINHAMENTO PARA FUNCIONÁRIO) ================= */}
         {abaAtiva === 'os' && (
           <div className="space-y-6">
-            <form onSubmit={criarOS} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
+            <form onSubmit={(e) => criarOS(e, false)} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h2 className="font-bold text-amber-400">Emitir Ordem de Serviço ({infoUnidadeAtual.nome})</h2>
                 {clientes.length > 0 && (
@@ -1874,7 +2106,7 @@ export default function App() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <input
                   type="text"
-                  placeholder="Nome do Cliente (Salva automático) *"
+                  placeholder="Nome do Cliente *"
                   required
                   value={novaOS.cliente}
                   onChange={(e) => setNovaOS({ ...novaOS, cliente: e.target.value })}
@@ -1882,14 +2114,14 @@ export default function App() {
                 />
                 <input
                   type="tel"
-                  placeholder="WhatsApp (com DDD)"
+                  placeholder="WhatsApp do Cliente (DDD)"
                   value={novaOS.tel}
                   onChange={(e) => setNovaOS({ ...novaOS, tel: e.target.value })}
                   className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
                 />
                 <input
                   type="text"
-                  placeholder="Descrição do Serviço *"
+                  placeholder="O que será feito (Descrição) *"
                   required
                   value={novaOS.desc}
                   onChange={(e) => setNovaOS({ ...novaOS, desc: e.target.value })}
@@ -1898,7 +2130,7 @@ export default function App() {
                 <input
                   type="number"
                   step="0.01"
-                  placeholder="Valor Total Cobrado (R$) *"
+                  placeholder="Valor Total (R$) *"
                   required
                   value={novaOS.valor}
                   onChange={(e) => setNovaOS({ ...novaOS, valor: e.target.value })}
@@ -1906,10 +2138,9 @@ export default function App() {
                 />
               </div>
 
-              {/* ADICIONAR MÚLTIPLOS MATERIAIS DO ESTOQUE NA OS */}
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
                 <span className="text-xs font-bold text-amber-400 block">
-                  Materiais / Chaves / Fechaduras utilizadas neste serviço (Opcional — permite vários itens):
+                  Materiais / Chaves / Fechaduras do estoque (Permite vários itens):
                 </span>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <select
@@ -1957,7 +2188,17 @@ export default function App() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <select
+                  value={novaOS.forma_pgto}
+                  onChange={(e) => setNovaOS({ ...novaOS, forma_pgto: e.target.value })}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-amber-300 font-semibold"
+                >
+                  <option value="Receber na Entrega (Pix/Cartão)">Pagamento: Receber na Entrega</option>
+                  <option value="Já Pago Adiantado">Pagamento: Já Pago Adiantado</option>
+                  <option value="Sinal 50% Pago / Cobrar Restante">Pagamento: Sinal 50% Pago (Cobrar resto)</option>
+                  <option value="Faturado / Condomínio">Pagamento: Faturado / Condomínio</option>
+                </select>
                 <select
                   value={novaOS.garantia}
                   onChange={(e) => setNovaOS({ ...novaOS, garantia: e.target.value })}
@@ -1970,16 +2211,25 @@ export default function App() {
                 </select>
                 <input
                   type="text"
-                  placeholder="Nota técnica / Placa / Modelo Fechadura"
+                  placeholder="Endereço / Placa / Obs pro funcionário"
                   value={novaOS.obs_tecnica}
                   onChange={(e) => setNovaOS({ ...novaOS, obs_tecnica: e.target.value })}
                   className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
                 />
               </div>
 
-              <button type="submit" className="w-full sm:w-auto bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-lg text-sm">
-                Gerar Ordem de Serviço
-              </button>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-lg text-xs sm:text-sm">
+                  Gerar Ordem de Serviço
+                </button>
+                <button
+                  type="button"
+                  onClick={() => criarOS(null, true)}
+                  className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5"
+                >
+                  <Send size={15} /> Gerar OS & Encaminhar p/ Funcionário
+                </button>
+              </div>
             </form>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2000,6 +2250,9 @@ export default function App() {
                       <h3 className="font-bold text-base mt-1">{os.cliente}</h3>
                       {os.tel && <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><Phone size={11} /> {os.tel}</p>}
                       <p className="text-sm text-slate-300 mt-1">{os.desc}</p>
+                      {os.forma_pgto && (
+                        <p className="text-xs text-sky-400 mt-1 font-medium">Condição: {os.forma_pgto}</p>
+                      )}
                       {listaMat.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
                           {listaMat.map((m, i) => (
@@ -2011,11 +2264,20 @@ export default function App() {
                       )}
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-3">
-                      <span className="font-bold text-base text-amber-400">R$ {Number(os.valor).toFixed(2)}</span>
-                      <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="space-y-2 border-t border-slate-800 pt-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-base text-amber-400">R$ {Number(os.valor).toFixed(2)}</span>
+                        <button
+                          onClick={() => prepararEnvioParaFuncionario('os', os)}
+                          className="bg-sky-950 hover:bg-sky-900 border border-sky-700 text-sky-300 text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1"
+                        >
+                          <Send size={12} /> Enviar p/ Funcionário
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
                         {os.status !== 'concluida' ? (
-                          <>
+                          <div className="flex flex-wrap gap-1.5">
                             <button
                               onClick={() => concluirOS(os, 'Pix')}
                               className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1"
@@ -2028,7 +2290,7 @@ export default function App() {
                             >
                               Fiado
                             </button>
-                          </>
+                          </div>
                         ) : (
                           <button
                             onClick={() => setComprovanteAtivo({
@@ -2043,7 +2305,7 @@ export default function App() {
                             })}
                             className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1"
                           >
-                            <Share2 size={13} /> Comprovante WhatsApp
+                            <Share2 size={13} /> Comprovante Cliente
                           </button>
                         )}
                         <button onClick={() => excluirOS(os.id)} className="text-red-400 hover:text-red-300 p-2">
@@ -2058,10 +2320,10 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 4: AGENDA DE SOCORROS (COM MULTI-MATERIAIS, AUTO-CADASTRO E COMPROVANTE) ================= */}
+        {/* ================= ABA 4: AGENDA DE SOCORROS ================= */}
         {abaAtiva === 'agenda' && (
           <div className="space-y-6">
-            <form onSubmit={criarAgendamento} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
+            <form onSubmit={(e) => criarAgendamento(e, false)} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h2 className="font-bold text-amber-400">Agendar Socorro Externo ({infoUnidadeAtual.nome})</h2>
                 {clientes.length > 0 && (
@@ -2084,7 +2346,7 @@ export default function App() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <input
                   type="text"
-                  placeholder="Nome do Cliente (Salva automático) *"
+                  placeholder="Nome do Cliente *"
                   required
                   value={novoAgendamento.cliente}
                   onChange={(e) => setNovoAgendamento({ ...novoAgendamento, cliente: e.target.value })}
@@ -2137,10 +2399,9 @@ export default function App() {
                 />
               </div>
 
-              {/* Múltiplos Materiais usados no Socorro */}
               <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
                 <span className="text-xs font-bold text-amber-400 block">
-                  Materiais do Estoque levados/usados no Socorro (Opcional):
+                  Materiais do Estoque levados no Socorro (Opcional):
                 </span>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <select
@@ -2184,9 +2445,18 @@ export default function App() {
                 )}
               </div>
 
-              <button type="submit" className="w-full sm:w-auto bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-lg text-sm">
-                Salvar Socorro na Agenda
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-lg text-xs sm:text-sm">
+                  Salvar Socorro na Agenda
+                </button>
+                <button
+                  type="button"
+                  onClick={() => criarAgendamento(null, true)}
+                  className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5"
+                >
+                  <Send size={15} /> Salvar & Enviar p/ Funcionário
+                </button>
+              </div>
             </form>
 
             <div className="space-y-3">
@@ -2213,13 +2483,19 @@ export default function App() {
                     </div>
                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 border-slate-800 pt-3 sm:pt-0">
                       <span className="font-bold text-base text-emerald-400">R$ {totalSoc.toFixed(2)}</span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          onClick={() => prepararEnvioParaFuncionario('socorro', ag)}
+                          className="bg-sky-950 hover:bg-sky-900 border border-sky-700 text-sky-300 text-xs font-bold px-2.5 py-2 rounded-lg flex items-center gap-1"
+                        >
+                          <Send size={12} /> p/ Funcionário
+                        </button>
                         {ag.status !== 'concluido' ? (
                           <button
                             onClick={() => concluirAgendamento(ag, 'Pix')}
                             className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1"
                           >
-                            <CheckCircle size={14} /> Finalizar & Comprovante
+                            <CheckCircle size={14} /> Finalizar & Recibo
                           </button>
                         ) : (
                           <button
@@ -2235,7 +2511,7 @@ export default function App() {
                             })}
                             className="bg-slate-800 text-emerald-400 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1"
                           >
-                            <Share2 size={13} /> Reenviar Recibo
+                            <Share2 size={13} /> Recibo Cliente
                           </button>
                         )}
                         <button onClick={() => excluirAgendamento(ag.id)} className="text-red-400 p-2">
@@ -2250,7 +2526,216 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 5: CAIXA MOBILE-FIRST & AGENDA DE BOLETOS SEM DÉBITO AUTOMÁTICO ================= */}
+        {/* ================= ABA 5: ORÇAMENTOS COM FILA DE STANDBY ================= */}
+        {abaAtiva === 'orcamento' && (
+          <div className="space-y-6">
+            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h2 className="font-bold text-amber-400">
+                  {orcamento.id ? `Editando Orçamento de: ${orcamento.cliente}` : `Novo Orçamento — Luisinho Chaveiro (${infoUnidadeAtual.nome})`}
+                </h2>
+                <div className="flex items-center gap-2">
+                  {orcamento.id && (
+                    <button
+                      type="button"
+                      onClick={() => setOrcamento({ id: null, cliente: '', tel: '', itens: [{ desc: '', qtd: 1, valor: 0 }], obs: 'Validade: 7 dias. Garantia de 90 dias.' })}
+                      className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
+                    >
+                      <X size={14} /> Limpar / Novo
+                    </button>
+                  )}
+                  {clientes.length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        const cli = clientes.find((c) => c.id.toString() === e.target.value);
+                        if (cli) setOrcamento({ ...orcamento, cliente: cli.nome, tel: cli.tel || '' });
+                      }}
+                      defaultValue=""
+                      className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300"
+                    >
+                      <option value="" disabled>Puxar cliente salvo...</option>
+                      {clientes.map((c) => (
+                        <option key={c.id} value={c.id}>{c.nome}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  placeholder="Nome do Cliente / Empresa *"
+                  value={orcamento.cliente}
+                  onChange={(e) => setOrcamento({ ...orcamento, cliente: e.target.value })}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                />
+                <input
+                  type="tel"
+                  placeholder="WhatsApp do Cliente (com DDD)"
+                  value={orcamento.tel}
+                  onChange={(e) => setOrcamento({ ...orcamento, tel: e.target.value })}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                />
+              </div>
+
+              <div className="space-y-2">
+                {orcamento.itens.map((item, index) => (
+                  <div key={index} className="flex flex-col sm:flex-row gap-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                    <input
+                      type="text"
+                      placeholder="Serviço ou Chave cotada"
+                      value={item.desc}
+                      onChange={(e) => atualizarItemOrcamento(index, 'desc', e.target.value)}
+                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        placeholder="Qtd"
+                        value={item.qtd}
+                        onChange={(e) => atualizarItemOrcamento(index, 'qtd', e.target.value)}
+                        className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Valor Un."
+                        value={item.valor}
+                        onChange={(e) => atualizarItemOrcamento(index, 'valor', e.target.value)}
+                        className="flex-1 sm:w-28 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                      />
+                      {orcamento.itens.length > 1 && (
+                        <button type="button" onClick={() => removerLinhaOrcamento(index)} className="text-red-400 px-2">
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={adicionarLinhaOrcamento}
+                  className="text-xs text-amber-400 hover:underline font-semibold"
+                >
+                  + Adicionar mais um item ao orçamento
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
+                <span className="text-lg font-bold">Total: R$ {totalOrcamento.toFixed(2)}</span>
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => salvarOrcamentoStandby(false)}
+                    className="flex-1 sm:flex-none bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
+                  >
+                    <FolderClock size={16} /> Salvar em Standby
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => salvarOrcamentoStandby(true)}
+                    className="flex-1 sm:flex-none bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
+                  >
+                    <Share2 size={16} /> Salvar Standby & Enviar WhatsApp
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* FILA DE ORÇAMENTOS EM STANDBY (AGUARDANDO RESPOSTA DO CLIENTE) */}
+            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-bold text-amber-400 flex items-center gap-2">
+                  <FolderClock size={18} /> Fila de Orçamentos Salvos / Em Standby
+                </h3>
+                <div className="flex gap-1.5">
+                  {[
+                    { id: 'standby', label: `Aguardando (${orcamentosEmStandby.length})` },
+                    { id: 'aprovado', label: 'Aprovados' },
+                    { id: 'todos', label: 'Todos' }
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setFiltroStatusOrcamento(f.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                        filtroStatusOrcamento === f.id ? 'bg-amber-500 text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {orcamentosUnidade
+                  .filter((o) => filtroStatusOrcamento === 'todos' ? true : o.status === filtroStatusOrcamento)
+                  .map((orc) => {
+                    const listaItens = Array.isArray(orc.itens) ? orc.itens : [];
+                    return (
+                      <div key={orc.id} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between gap-3">
+                        <div>
+                          <div className="flex justify-between items-start">
+                            <span className="text-[11px] text-slate-400">{orc.data}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${orc.status === 'aprovado' ? 'bg-emerald-950 text-emerald-400' : 'bg-sky-950 text-sky-400'}`}>
+                              {orc.status === 'standby' ? 'Em Standby' : orc.status}
+                            </span>
+                          </div>
+                          <h4 className="font-bold text-base text-slate-100 mt-1">{orc.cliente}</h4>
+                          {orc.tel && <p className="text-xs text-slate-400 flex items-center gap-1"><Phone size={11} /> {orc.tel}</p>}
+                          <div className="mt-2 space-y-1 text-xs text-slate-300 bg-slate-900 p-2 rounded-lg">
+                            {listaItens.map((it, idx) => (
+                              <div key={idx} className="flex justify-between">
+                                <span>{it.qtd}x {it.desc}</span>
+                                <span className="text-amber-400">R$ {(Number(it.qtd) * Number(it.valor)).toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-2">
+                          <span className="font-bold text-base text-emerald-400">R$ {Number(orc.total).toFixed(2)}</span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {orc.status === 'standby' && (
+                              <button
+                                onClick={() => aprovarOrcamentoVirarOS(orc)}
+                                className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1"
+                              >
+                                <ShieldCheck size={13} /> Aprovar & Virar OS
+                              </button>
+                            )}
+                            <button
+                              onClick={() => dispararTextoOrcamentoWhatsApp(orc)}
+                              className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1"
+                            >
+                              <Share2 size={12} /> WhatsApp
+                            </button>
+                            <button
+                              onClick={() => carregarOrcamentoParaEdicao(orc)}
+                              className="bg-slate-800 text-amber-400 p-1.5 rounded-lg"
+                              title="Editar este orçamento"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              onClick={() => excluirOrcamentoSalvo(orc.id)}
+                              className="bg-slate-800 text-red-400 p-1.5 rounded-lg"
+                              title="Excluir orçamento"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================= ABA 6: CAIXA & AGENDA DE BOLETOS ================= */}
         {abaAtiva === 'caixa' && (
           <div className="space-y-6">
             <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2">
@@ -2323,7 +2808,6 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* EXTRATO DO CAIXA COM CARTÕES EMPILHADOS (NÃO CORTA NO CELULAR) */}
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
                 <h3 className="font-bold text-amber-400">Movimentações do Caixa ({transacoesFiltradas.length})</h3>
 
@@ -2474,7 +2958,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* CALENDÁRIO / AGENDA DE BOLETOS (COM OPÇÃO DE NÃO DEBITAR DO CAIXA) */}
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
                 <div>
                   <h3 className="font-bold text-amber-400">Calendário de Boletos & Obrigações</h3>
@@ -2539,14 +3022,12 @@ export default function App() {
                               <button
                                 onClick={() => darBaixaBoleto(c, false)}
                                 className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-2.5 py-1.5 rounded-lg text-xs"
-                                title="Marca como pago apenas na agenda, sem descontar do caixa da loja"
                               >
                                 ✓ Só Marcar Pago (Sem Caixa)
                               </button>
                               <button
                                 onClick={() => darBaixaBoleto(c, true)}
                                 className="bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold px-2.5 py-1.5 rounded-lg text-xs border border-slate-700"
-                                title="Marca como pago e lança saída no caixa da loja"
                               >
                                 Pagar c/ Caixa da Loja
                               </button>
@@ -2572,7 +3053,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 6: ESTOQUE MOBILE-FIRST (CARTÕES NO CELULAR + TABELA NO PC) ================= */}
+        {/* ================= ABA 7: ESTOQUE MOBILE-FIRST ================= */}
         {abaAtiva === 'estoque' && (
           <div className="space-y-6">
             {itensEstoqueBaixo.length > 0 && (
@@ -2704,7 +3185,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Cartões Responsivos para Celular e Grid para PC */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {estoqueFiltrado.map((item) => {
                   const custo = Number(item.custo || 0);
@@ -2748,7 +3228,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 7: CRM DE CLIENTES UNIFICADO (PDV + OS + SOCORROS) ================= */}
+        {/* ================= ABA 8: CRM DE CLIENTES UNIFICADO ================= */}
         {abaAtiva === 'clientes' && (
           <div className="space-y-6">
             <form onSubmit={criarCliente} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
@@ -2861,114 +3341,15 @@ export default function App() {
             </div>
           </div>
         )}
-
-        {/* ================= ABA 8: GERADOR DE ORÇAMENTOS ================= */}
-        {abaAtiva === 'orcamento' && (
-          <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 max-w-3xl mx-auto">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <h2 className="font-bold text-amber-400">Orçamento Oficial — Luisinho Chaveiro ({infoUnidadeAtual.nome})</h2>
-              {clientes.length > 0 && (
-                <select
-                  onChange={(e) => {
-                    const cli = clientes.find((c) => c.id.toString() === e.target.value);
-                    if (cli) setOrcamento({ ...orcamento, cliente: cli.nome, tel: cli.tel || '' });
-                  }}
-                  defaultValue=""
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300"
-                >
-                  <option value="" disabled>Puxar cliente salvo...</option>
-                  {clientes.map((c) => (
-                    <option key={c.id} value={c.id}>{c.nome}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <input
-                type="text"
-                placeholder="Nome do Cliente"
-                value={orcamento.cliente}
-                onChange={(e) => setOrcamento({ ...orcamento, cliente: e.target.value })}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-              />
-              <input
-                type="tel"
-                placeholder="WhatsApp do Cliente (com DDD) *"
-                value={orcamento.tel}
-                onChange={(e) => setOrcamento({ ...orcamento, tel: e.target.value })}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-              />
-            </div>
-
-            <div className="space-y-2">
-              {orcamento.itens.map((item, index) => (
-                <div key={index} className="flex flex-col sm:flex-row gap-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                  <input
-                    type="text"
-                    placeholder="Serviço ou Chave"
-                    value={item.desc}
-                    onChange={(e) => atualizarItemOrcamento(index, 'desc', e.target.value)}
-                    className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                  />
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      placeholder="Qtd"
-                      value={item.qtd}
-                      onChange={(e) => atualizarItemOrcamento(index, 'qtd', e.target.value)}
-                      className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Valor Un."
-                      value={item.valor}
-                      onChange={(e) => atualizarItemOrcamento(index, 'valor', e.target.value)}
-                      className="flex-1 sm:w-28 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                    />
-                  </div>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={adicionarLinhaOrcamento}
-                className="text-xs text-amber-400 hover:underline font-semibold"
-              >
-                + Adicionar mais um item ao orçamento
-              </button>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
-              <span className="text-lg font-bold">Total: R$ {totalOrcamento.toFixed(2)}</span>
-              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={converterOrcamentoEmOS}
-                  className="flex-1 sm:flex-none bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
-                >
-                  <ShieldCheck size={16} /> Aprovar & Virar OS
-                </button>
-                <button
-                  type="button"
-                  onClick={enviarOrcamentoWhatsApp}
-                  className="flex-1 sm:flex-none bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
-                >
-                  <Share2 size={16} /> Enviar no WhatsApp
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
 
-      {/* BARRA DE NAVEGAÇÃO INFERIOR FIXA PARA CELULAR (ESTILO APP NATIVO) */}
+      {/* BARRA DE NAVEGAÇÃO INFERIOR FIXA PARA CELULAR */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 px-2 py-1.5 grid grid-cols-5 gap-1 z-30">
         {[
           { id: 'dashboard', label: 'Hoje', icon: LayoutDashboard },
           { id: 'pdv', label: 'PDV', icon: ShoppingCart },
-          { id: 'simulador', label: 'Simular', icon: Calculator },
           { id: 'os', label: 'OS', icon: Wrench },
+          { id: 'orcamento', label: 'Standby', icon: FolderClock },
           { id: 'caixa', label: 'Caixa', icon: DollarSign },
         ].map((item) => {
           const Icone = item.icon;
