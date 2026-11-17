@@ -3,7 +3,8 @@ import { supabase } from './supabase';
 import { 
   Wrench, Package, DollarSign, Calendar, Users, FileText, 
   Plus, Trash2, Edit2, CheckCircle, Search, Phone, 
-  MapPin, RefreshCw, ShoppingCart, ArrowUpCircle, ArrowDownCircle, Share2, AlertCircle, X, Check
+  MapPin, RefreshCw, ShoppingCart, ArrowUpCircle, ArrowDownCircle, 
+  Share2, AlertCircle, X, Check, AlertTriangle, Filter
 } from 'lucide-react';
 
 export default function App() {
@@ -11,7 +12,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [erroConexao, setErroConexao] = useState(null);
 
-  // Estados das tabelas
+  // Estados das tabelas no Supabase
   const [estoque, setEstoque] = useState([]);
   const [transacoes, setTransacoes] = useState([]);
   const [contasPagar, setContasPagar] = useState([]);
@@ -19,26 +20,34 @@ export default function App() {
   const [agendamentos, setAgendamentos] = useState([]);
   const [clientes, setClientes] = useState([]);
 
-  // Estados do PDV
+  // ================= ESTADOS DO PDV =================
   const [buscaPdv, setBuscaPdv] = useState('');
   const [carrinho, setCarrinho] = useState([]);
   const [servicoAvulsoDesc, setServicoAvulsoDesc] = useState('');
   const [servicoAvulsoValor, setServicoAvulsoValor] = useState('');
   const [formaPgto, setFormaPgto] = useState('Pix');
+  const [ultimaVendaRecibo, setUltimaVendaRecibo] = useState(null);
 
-  // Estados de Formulários
+  // ================= ESTADOS DO ESTOQUE =================
   const [novaChave, setNovaChave] = useState({ id: '', nome: '', cat: 'Yale / Comum', qtd: 10, minimo: 3, custo: '', venda: '' });
   const [editandoEstoqueId, setEditandoEstoqueId] = useState(null);
+  const [buscaEstoque, setBuscaEstoque] = useState('');
+  const [filtroCatEstoque, setFiltroCatEstoque] = useState('Todas');
+  const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
 
-  const [novaOS, setNovaOS] = useState({ cliente: '', tel: '', desc: '', valor: '', custo_insumo: 0, chave_id: '', qtd_copias: 1 });
+  // ================= ESTADOS DE OS, AGENDA E CLIENTES =================
+  const [novaOS, setNovaOS] = useState({ cliente: '', tel: '', desc: '', valor: '', chave_id: '', qtd_copias: 1 });
   const [novoAgendamento, setNovoAgendamento] = useState({ cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '', taxa_deslocamento: 20, valor_estimado: 80 });
   const [novoCliente, setNovoCliente] = useState({ nome: '', tel: '', endereco: '', tipo: 'Residencial', obs: '' });
-  
+  const [clienteHistoricoSelecionado, setClienteHistoricoSelecionado] = useState(null);
+
+  // ================= ESTADOS DO CAIXA E BOLETOS =================
   const [novaTransacao, setNovaTransacao] = useState({ tipo: 'saida', desc: '', valor: '', forma: 'Pix' });
   const [transacaoEditando, setTransacaoEditando] = useState(null);
-
   const [novaConta, setNovaConta] = useState({ desc: '', valor: '', vencimento: '' });
-  const [filtroPeriodoCaixa, setFiltroPeriodoCaixa] = useState('todos');
+  const [filtroPeriodoCaixa, setFiltroPeriodoCaixa] = useState('hoje'); // 'hoje', '7dias', 'mes', 'todos'
+
+  // ================= ESTADOS DO ORÇAMENTO =================
   const [orcamento, setOrcamento] = useState({ cliente: '', tel: '', itens: [{ desc: '', qtd: 1, valor: 0 }], obs: 'Validade do orçamento: 7 dias.' });
 
   // Carregar dados do Supabase
@@ -92,6 +101,17 @@ export default function App() {
     };
   }, []);
 
+  // ================= HELPER: ENVIAR RECIBO WHATSAPP =================
+  const enviarReciboWhatsApp = (titulo, clienteNome, tel, descricaoItens, total, forma) => {
+    const dataAtual = new Date().toLocaleDateString('pt-BR');
+    const texto = `*COMPROVANTE DE SERVIÇO - CHAVEIRO PRO*%0A*Data:* ${dataAtual}%0A*Cliente:* ${clienteNome || 'Consumidor'}%0A%0A*Descrição:*%0A${descricaoItens}%0A%0A*Total Pago:* R$ ${Number(total).toFixed(2)} (${forma})%0A_Obrigado pela preferência!_`;
+    const numeroLimpo = (tel || '').replace(/\D/g, '');
+    const url = numeroLimpo
+      ? `https://wa.me/55${numeroLimpo}?text=${texto}`
+      : `https://wa.me/?text=${texto}`;
+    window.open(url, '_blank');
+  };
+
   // ================= FUNÇÕES DO PDV =================
   const adicionarAoCarrinho = (item) => {
     const existente = carrinho.find((i) => i.id === item.id);
@@ -124,6 +144,7 @@ export default function App() {
     const totalVenda = carrinho.reduce((acc, i) => acc + i.venda * i.qtdVenda, 0);
     const totalCusto = carrinho.reduce((acc, i) => acc + (Number(i.custo) || 0) * i.qtdVenda, 0);
     const resumoDesc = carrinho.map((i) => `${i.qtdVenda}x ${i.nome}`).join(', ');
+    const linhasRecibo = carrinho.map((i) => `- ${i.qtdVenda}x ${i.nome}: R$ ${(i.qtdVenda * i.venda).toFixed(2)}`).join('%0A');
 
     const novaTrans = {
       id: Date.now(),
@@ -153,6 +174,12 @@ export default function App() {
         await supabase.from('estoque').update({ qtd: novaQtd, vendas_total: novasVendas }).eq('id', item.id);
       }
     }
+
+    setUltimaVendaRecibo({
+      itensTexto: linhasRecibo,
+      total: totalVenda,
+      forma: formaPgto
+    });
 
     setCarrinho([]);
     await carregarDados();
@@ -225,22 +252,41 @@ export default function App() {
     carregarDados();
   };
 
+  const itensEstoqueBaixo = estoque.filter((i) => Number(i.qtd) <= Number(i.minimo || 3));
+  const estoqueFiltrado = estoque.filter((item) => {
+    const bateBusca = item.nome.toLowerCase().includes(buscaEstoque.toLowerCase()) || item.id.toLowerCase().includes(buscaEstoque.toLowerCase());
+    const bateCat = filtroCatEstoque === 'Todas' || item.cat === filtroCatEstoque;
+    const bateBaixo = !apenasEstoqueBaixo || Number(item.qtd) <= Number(item.minimo || 3);
+    return bateBusca && bateCat && bateBaixo;
+  });
+
   const capitalTotalEstoque = estoque.reduce((acc, i) => acc + Number(i.custo || 0) * Number(i.qtd || 0), 0);
   const potencialVendaEstoque = estoque.reduce((acc, i) => acc + Number(i.venda || 0) * Number(i.qtd || 0), 0);
 
   // ================= FUNÇÕES DE ORDENS DE SERVIÇO (OS) =================
+  const selecionarClienteParaOS = (clienteId) => {
+    const cli = clientes.find((c) => c.id.toString() === clienteId);
+    if (cli) {
+      setNovaOS({ ...novaOS, cliente: cli.nome, tel: cli.tel || '' });
+    }
+  };
+
   const criarOS = async (e) => {
     e.preventDefault();
     if (!novaOS.cliente || !novaOS.desc || !novaOS.valor) return;
+
+    const chaveVinculada = estoque.find((c) => c.id === novaOS.chave_id);
+    const custoCalculado = chaveVinculada ? Number(chaveVinculada.custo || 0) * Number(novaOS.qtd_copias || 1) : 0;
+
     const itemOS = {
       id: Date.now(),
       cliente: novaOS.cliente,
       tel: novaOS.tel,
       desc: novaOS.desc,
       valor: Number(novaOS.valor),
-      custo_insumo: Number(novaOS.custo_insumo || 0),
+      custo_insumo: custoCalculado,
       chave_id: novaOS.chave_id || null,
-      qtd_copias: Number(novaOS.qtd_copias || 0),
+      qtd_copias: novaOS.chave_id ? Number(novaOS.qtd_copias || 1) : 0,
       status: 'pendente',
       data: new Date().toLocaleDateString('pt-BR')
     };
@@ -251,7 +297,7 @@ export default function App() {
       alert('Erro ao salvar OS: ' + error.message);
       return;
     }
-    setNovaOS({ cliente: '', tel: '', desc: '', valor: '', custo_insumo: 0, chave_id: '', qtd_copias: 1 });
+    setNovaOS({ cliente: '', tel: '', desc: '', valor: '', chave_id: '', qtd_copias: 1 });
     carregarDados();
   };
 
@@ -260,6 +306,7 @@ export default function App() {
     setOrdensServico((prev) => prev.map((o) => o.id === os.id ? { ...o, status: 'concluida' } : o));
     await supabase.from('ordens_servico').update({ status: 'concluida' }).eq('id', os.id);
 
+    // 1. Lançar entrada no caixa
     const novaTrans = {
       id: Date.now(),
       tipo: 'entrada',
@@ -272,6 +319,18 @@ export default function App() {
     };
     setTransacoes((prev) => [novaTrans, ...prev]);
     await supabase.from('transacoes').insert([novaTrans]);
+
+    // 2. Dar baixa na chave vinculada do estoque (se houver)
+    if (os.chave_id && Number(os.qtd_copias) > 0) {
+      const chaveUsada = estoque.find((c) => c.id === os.chave_id);
+      if (chaveUsada) {
+        const novaQtd = Math.max(0, Number(chaveUsada.qtd) - Number(os.qtd_copias));
+        const novasVendas = Number(chaveUsada.vendas_total || 0) + Number(os.qtd_copias);
+        setEstoque((prev) => prev.map((e) => e.id === chaveUsada.id ? { ...e, qtd: novaQtd, vendas_total: novasVendas } : e));
+        await supabase.from('estoque').update({ qtd: novaQtd, vendas_total: novasVendas }).eq('id', chaveUsada.id);
+      }
+    }
+
     carregarDados();
   };
 
@@ -282,6 +341,18 @@ export default function App() {
   };
 
   // ================= FUNÇÕES DA AGENDA DE SOCORROS =================
+  const selecionarClienteParaAgenda = (clienteId) => {
+    const cli = clientes.find((c) => c.id.toString() === clienteId);
+    if (cli) {
+      setNovoAgendamento({
+        ...novoAgendamento,
+        cliente: cli.nome,
+        tel: cli.tel || '',
+        endereco: cli.endereco || novoAgendamento.endereco
+      });
+    }
+  };
+
   const criarAgendamento = async (e) => {
     e.preventDefault();
     if (!novoAgendamento.cliente || !novoAgendamento.endereco || !novoAgendamento.servico) return;
@@ -350,6 +421,7 @@ export default function App() {
   const excluirCliente = async (id) => {
     setClientes((prev) => prev.filter((c) => c.id !== id));
     await supabase.from('clientes').delete().eq('id', id);
+    if (clienteHistoricoSelecionado?.id === id) setClienteHistoricoSelecionado(null);
     carregarDados();
   };
 
@@ -450,14 +522,28 @@ export default function App() {
     carregarDados();
   };
 
-  // Filtro de Transações por Período
+  // Filtro de Transações por Dia, Semana (7 dias), Mês Atual ou Todos
   const transacoesFiltradas = transacoes.filter((t) => {
     if (filtroPeriodoCaixa === 'todos') return true;
-    const agora = Date.now();
-    const diffDias = (agora - Number(t.timestamp)) / (1000 * 60 * 60 * 24);
-    if (filtroPeriodoCaixa === 'hoje') return t.data === new Date().toLocaleDateString('pt-BR');
-    if (filtroPeriodoCaixa === '7dias') return diffDias <= 7;
-    if (filtroPeriodoCaixa === '30dias') return diffDias <= 30;
+    const hoje = new Date();
+    const hojeStr = hoje.toLocaleDateString('pt-BR');
+
+    if (filtroPeriodoCaixa === 'hoje') {
+      return t.data === hojeStr;
+    }
+    if (filtroPeriodoCaixa === '7dias') {
+      const diffDias = (Date.now() - Number(t.timestamp)) / (1000 * 60 * 60 * 24);
+      return diffDias <= 7;
+    }
+    if (filtroPeriodoCaixa === 'mes') {
+      const partes = (t.data || '').split('/'); // DD/MM/AAAA
+      if (partes.length === 3) {
+        const mesTrans = Number(partes[1]);
+        const anoTrans = Number(partes[2]);
+        return mesTrans === hoje.getMonth() + 1 && anoTrans === hoje.getFullYear();
+      }
+      return false;
+    }
     return true;
   });
 
@@ -465,8 +551,21 @@ export default function App() {
   const totalSaidas = transacoesFiltradas.filter((t) => t.tipo === 'saida').reduce((acc, t) => acc + Number(t.valor), 0);
   const custoInsumosPeriodo = transacoesFiltradas.filter((t) => t.tipo === 'entrada').reduce((acc, t) => acc + Number(t.custo_insumo || 0), 0);
   const saldoLiquido = totalEntradas - totalSaidas;
+  const lucroRealPeriodo = totalEntradas - totalSaidas - custoInsumosPeriodo;
+
+  // Totais por Forma de Pagamento (Entradas no período)
+  const entradasPix = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && t.forma === 'Pix').reduce((acc, t) => acc + Number(t.valor), 0);
+  const entradasDinheiro = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && t.forma === 'Dinheiro').reduce((acc, t) => acc + Number(t.valor), 0);
+  const entradasCartao = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && (t.forma === 'Cartão de Crédito' || t.forma === 'Cartão de Débito')).reduce((acc, t) => acc + Number(t.valor), 0);
 
   // ================= FUNÇÕES DO ORÇAMENTO =================
+  const selecionarClienteParaOrcamento = (clienteId) => {
+    const cli = clientes.find((c) => c.id.toString() === clienteId);
+    if (cli) {
+      setOrcamento({ ...orcamento, cliente: cli.nome, tel: cli.tel || '' });
+    }
+  };
+
   const adicionarLinhaOrcamento = () => {
     setOrcamento({ ...orcamento, itens: [...orcamento.itens, { desc: '', qtd: 1, valor: 0 }] });
   };
@@ -483,7 +582,10 @@ export default function App() {
     const linhas = orcamento.itens.map((i) => `- ${i.qtd}x ${i.desc}: R$ ${(i.qtd * i.valor).toFixed(2)}`).join('%0A');
     const texto = `*ORÇAMENTO - CHAVEIRO PRO*%0A*Cliente:* ${orcamento.cliente || 'Não informado'}%0A%0A*Itens/Serviços:*%0A${linhas}%0A%0A*Total:* R$ ${totalOrcamento.toFixed(2)}%0A_${orcamento.obs}_`;
     const numeroLimpo = orcamento.tel.replace(/\D/g, '');
-    window.open(`https://wa.me/55${numeroLimpo}?text=${texto}`, '_blank');
+    const url = numeroLimpo
+      ? `https://wa.me/55${numeroLimpo}?text=${texto}`
+      : `https://wa.me/?text=${texto}`;
+    window.open(url, '_blank');
   };
 
   return (
@@ -518,7 +620,7 @@ export default function App() {
       <nav className="bg-slate-900 border-b border-slate-800 px-2 py-2 flex overflow-x-auto gap-1 sticky top-14 z-10">
         {[
           { id: 'pdv', label: 'PDV / Balcão', icon: ShoppingCart },
-          { id: 'estoque', label: 'Estoque', icon: Package },
+          { id: 'estoque', label: `Estoque${itensEstoqueBaixo.length > 0 ? ` (${itensEstoqueBaixo.length})` : ''}`, icon: Package },
           { id: 'os', label: 'Ordens (OS)', icon: Wrench },
           { id: 'agenda', label: 'Socorros', icon: Calendar },
           { id: 'caixa', label: 'Caixa / Contas', icon: DollarSign },
@@ -548,6 +650,25 @@ export default function App() {
         {abaAtiva === 'pdv' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-4">
+              {ultimaVendaRecibo && (
+                <div className="bg-emerald-950/60 border border-emerald-700 p-3 rounded-xl flex items-center justify-between gap-2">
+                  <span className="text-xs text-emerald-300 font-medium">
+                    Venda de R$ {ultimaVendaRecibo.total.toFixed(2)} ({ultimaVendaRecibo.forma}) registada!
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => enviarReciboWhatsApp('Venda Balcão', '', '', ultimaVendaRecibo.itensTexto, ultimaVendaRecibo.total, ultimaVendaRecibo.forma)}
+                      className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1"
+                    >
+                      <Share2 size={13} /> Enviar Recibo WhatsApp
+                    </button>
+                    <button onClick={() => setUltimaVendaRecibo(null)} className="text-slate-400 hover:text-slate-200">
+                      <X size={15} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
                 <h2 className="font-bold text-amber-400 mb-3 flex items-center gap-2">
                   <Search size={18} /> Selecionar Chave ou Produto
@@ -674,9 +795,26 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 2: ESTOQUE DE CHAVES COM CUSTO E MARGEM ================= */}
+        {/* ================= ABA 2: ESTOQUE DE CHAVES COM CUSTO, MARGEM E FILTROS ================= */}
         {abaAtiva === 'estoque' && (
           <div className="space-y-6">
+            {itensEstoqueBaixo.length > 0 && (
+              <div className="bg-red-950/50 border border-red-800 p-3 rounded-xl flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs text-red-300">
+                  <AlertTriangle size={16} className="text-red-400 shrink-0" />
+                  <span>
+                    <strong>Alerta de Reposição:</strong> Você tem {itensEstoqueBaixo.length} modelo(s) com estoque baixo ou zerado.
+                  </span>
+                </div>
+                <button
+                  onClick={() => setApenasEstoqueBaixo(!apenasEstoqueBaixo)}
+                  className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap"
+                >
+                  {apenasEstoqueBaixo ? 'Mostrar Todos' : 'Filtrar Estoque Baixo'}
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
                 <span className="text-xs text-slate-400">Modelos Cadastrados</span>
@@ -767,8 +905,33 @@ export default function App() {
               </button>
             </form>
 
-            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-              <h3 className="font-bold text-slate-200 mb-3">Itens Registados ({estoque.length})</h3>
+            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h3 className="font-bold text-slate-200">Itens Registados ({estoqueFiltrado.length})</h3>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    type="text"
+                    placeholder="Buscar código ou nome..."
+                    value={buscaEstoque}
+                    onChange={(e) => setBuscaEstoque(e.target.value)}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs"
+                  />
+                  <select
+                    value={filtroCatEstoque}
+                    onChange={(e) => setFiltroCatEstoque(e.target.value)}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs"
+                  >
+                    <option value="Todas">Todas as Categorias</option>
+                    <option>Yale / Comum</option>
+                    <option>Tetra</option>
+                    <option>Automotiva / Canivete</option>
+                    <option>Multiponto</option>
+                    <option>Gorge / Antiga</option>
+                    <option>Fechaduras / Cadeados</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead>
@@ -784,7 +947,7 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {estoque.map((item) => {
+                    {estoqueFiltrado.map((item) => {
                       const custo = Number(item.custo || 0);
                       const venda = Number(item.venda || 0);
                       const lucro = venda - custo;
@@ -825,7 +988,22 @@ export default function App() {
         {abaAtiva === 'os' && (
           <div className="space-y-6">
             <form onSubmit={criarOS} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-              <h2 className="font-bold text-amber-400">Nova Ordem de Serviço (OS)</h2>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h2 className="font-bold text-amber-400">Nova Ordem de Serviço (OS)</h2>
+                {clientes.length > 0 && (
+                  <select
+                    onChange={(e) => selecionarClienteParaOS(e.target.value)}
+                    defaultValue=""
+                    className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300"
+                  >
+                    <option value="" disabled>Puxar cliente cadastrado...</option>
+                    {clientes.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nome}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <input
                   type="text"
@@ -852,6 +1030,7 @@ export default function App() {
                 />
                 <input
                   type="number"
+                  step="0.01"
                   placeholder="Valor Total (R$) *"
                   required
                   value={novaOS.valor}
@@ -859,6 +1038,33 @@ export default function App() {
                   className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm"
                 />
               </div>
+
+              {/* Vínculo opcional com chave do estoque */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                <select
+                  value={novaOS.chave_id}
+                  onChange={(e) => setNovaOS({ ...novaOS, chave_id: e.target.value })}
+                  className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300"
+                >
+                  <option value="">Sem baixa de chave do estoque (apenas mão de obra)</option>
+                  {estoque.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      Baixar do estoque: [{item.id}] {item.nome} (Disp: {item.qtd})
+                    </option>
+                  ))}
+                </select>
+                {novaOS.chave_id && (
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="Qtd de chaves usadas"
+                    value={novaOS.qtd_copias}
+                    onChange={(e) => setNovaOS({ ...novaOS, qtd_copias: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                  />
+                )}
+              </div>
+
               <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">
                 Gerar Ordem de Serviço
               </button>
@@ -876,16 +1082,28 @@ export default function App() {
                     </div>
                     <h3 className="font-bold text-base mt-1">{os.cliente}</h3>
                     <p className="text-sm text-slate-300 mt-1">{os.desc}</p>
+                    {os.chave_id && (
+                      <span className="inline-block mt-2 text-[11px] bg-slate-800 text-amber-300 px-2 py-0.5 rounded">
+                        Insumo vinculado: {os.qtd_copias}x [{os.chave_id}]
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center justify-between border-t border-slate-800 pt-3 mt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-3 mt-4">
                     <span className="font-bold text-amber-400">R$ {Number(os.valor).toFixed(2)}</span>
-                    <div className="flex gap-2">
-                      {os.status !== 'concluida' && (
+                    <div className="flex items-center gap-2">
+                      {os.status !== 'concluida' ? (
                         <button
                           onClick={() => concluirOS(os)}
                           className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1"
                         >
                           <CheckCircle size={14} /> Concluir e Lançar Caixa
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => enviarReciboWhatsApp(`OS #${os.id.toString().slice(-4)}`, os.cliente, os.tel, `- ${os.desc}`, os.valor, 'Pix')}
+                          className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1"
+                        >
+                          <Share2 size={13} /> Recibo WhatsApp
                         </button>
                       )}
                       <button onClick={() => excluirOS(os.id)} className="text-red-400 hover:text-red-300 p-1">
@@ -903,7 +1121,22 @@ export default function App() {
         {abaAtiva === 'agenda' && (
           <div className="space-y-6">
             <form onSubmit={criarAgendamento} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-              <h2 className="font-bold text-amber-400">Agendar Socorro Externo / Atendimento</h2>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h2 className="font-bold text-amber-400">Agendar Socorro Externo / Atendimento</h2>
+                {clientes.length > 0 && (
+                  <select
+                    onChange={(e) => selecionarClienteParaAgenda(e.target.value)}
+                    defaultValue=""
+                    className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300"
+                  >
+                    <option value="" disabled>Puxar cliente cadastrado...</option>
+                    {clientes.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nome}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <input
                   type="text"
@@ -968,13 +1201,15 @@ export default function App() {
                     <span className="font-bold text-emerald-400">
                       R$ {(Number(ag.valor_estimado) + Number(ag.taxa_deslocamento)).toFixed(2)}
                     </span>
-                    {ag.status !== 'concluido' && (
+                    {ag.status !== 'concluido' ? (
                       <button
                         onClick={() => concluirAgendamento(ag)}
                         className="bg-emerald-500 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg"
                       >
                         Concluir Socorro
                       </button>
+                    ) : (
+                      <span className="text-xs text-emerald-400 font-bold">Concluído</span>
                     )}
                     <button onClick={() => excluirAgendamento(ag.id)} className="text-red-400">
                       <Trash2 size={16} />
@@ -986,9 +1221,37 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 5: CAIXA COM EDIÇÃO E CONTAS A PAGAR ================= */}
+        {/* ================= ABA 5: CAIXA COM EDIÇÃO, FILTRO DIA/SEMANA/MÊS E CONTAS A PAGAR ================= */}
         {abaAtiva === 'caixa' && (
           <div className="space-y-6">
+            {/* Barra de Filtro de Período: Dia / Semana / Mês / Tudo */}
+            <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <Filter size={14} className="text-amber-400" /> Período do Caixa:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { id: 'hoje', label: 'Dia (Hoje)' },
+                  { id: '7dias', label: 'Semana (7 dias)' },
+                  { id: 'mes', label: 'Mês Atual' },
+                  { id: 'todos', label: 'Todo Histórico' },
+                ].map((periodo) => (
+                  <button
+                    key={periodo.id}
+                    onClick={() => setFiltroPeriodoCaixa(periodo.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                      filtroPeriodoCaixa === periodo.id
+                        ? 'bg-amber-500 text-slate-950'
+                        : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                    }`}
+                  >
+                    {periodo.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cards Principais do Caixa */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
                 <span className="text-xs text-slate-400 flex items-center gap-1">
@@ -1003,38 +1266,45 @@ export default function App() {
                 <p className="text-xl font-bold text-red-400 mt-1">R$ {totalSaidas.toFixed(2)}</p>
               </div>
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Custo de Chaves Vendidas</span>
-                <p className="text-xl font-bold text-slate-300 mt-1">R$ {custoInsumosPeriodo.toFixed(2)}</p>
-              </div>
-              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Saldo Líquido em Caixa</span>
+                <span className="text-xs text-slate-400">Saldo em Caixa (Entradas - Saídas)</span>
                 <p className={`text-xl font-bold mt-1 ${saldoLiquido >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
                   R$ {saldoLiquido.toFixed(2)}
                 </p>
+              </div>
+              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
+                <span className="text-xs text-slate-400">Lucro Real (Descontando Chaves)</span>
+                <p className={`text-xl font-bold mt-1 ${lucroRealPeriodo >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  R$ {lucroRealPeriodo.toFixed(2)}
+                </p>
+                <span className="text-[10px] text-slate-500">Custo insumos: R$ {custoInsumosPeriodo.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* Resumo por Forma de Pagamento */}
+            <div className="grid grid-cols-3 gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800 text-xs">
+              <div>
+                <span className="text-slate-400 block">Entradas Pix:</span>
+                <strong className="text-emerald-400 text-sm">R$ {entradasPix.toFixed(2)}</strong>
+              </div>
+              <div>
+                <span className="text-slate-400 block">Entradas Dinheiro:</span>
+                <strong className="text-amber-400 text-sm">R$ {entradasDinheiro.toFixed(2)}</strong>
+              </div>
+              <div>
+                <span className="text-slate-400 block">Entradas Cartão:</span>
+                <strong className="text-sky-400 text-sm">R$ {entradasCartao.toFixed(2)}</strong>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-amber-400">Extrato de Movimentações</h3>
-                  <select
-                    value={filtroPeriodoCaixa}
-                    onChange={(e) => setFiltroPeriodoCaixa(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs"
-                  >
-                    <option value="todos">Todo o Histórico</option>
-                    <option value="hoje">Apenas Hoje</option>
-                    <option value="7dias">Últimos 7 Dias</option>
-                    <option value="30dias">Últimos 30 Dias</option>
-                  </select>
-                </div>
+                <h3 className="font-bold text-amber-400">Extrato de Movimentações ({transacoesFiltradas.length})</h3>
 
-                <form onSubmit={adicionarTransacaoManual} className="flex flex-col sm:flex-row gap-2">
+                <form onSubmit={adicionarTransacaoManual} className="grid grid-cols-1 sm:grid-cols-12 gap-2">
                   <select
                     value={novaTransacao.tipo}
                     onChange={(e) => setNovaTransacao({ ...novaTransacao, tipo: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-xs"
+                    className="sm:col-span-3 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-xs"
                   >
                     <option value="saida">Saída (-)</option>
                     <option value="entrada">Entrada (+)</option>
@@ -1045,7 +1315,7 @@ export default function App() {
                     required
                     value={novaTransacao.desc}
                     onChange={(e) => setNovaTransacao({ ...novaTransacao, desc: e.target.value })}
-                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                    className="sm:col-span-4 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
                   />
                   <input
                     type="number"
@@ -1054,96 +1324,110 @@ export default function App() {
                     required
                     value={novaTransacao.valor}
                     onChange={(e) => setNovaTransacao({ ...novaTransacao, valor: e.target.value })}
-                    className="w-24 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                    className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-xs"
                   />
-                  <button type="submit" className="bg-amber-500 text-slate-950 font-bold px-3 py-2 rounded-lg text-xs">
-                    Lançar
+                  <select
+                    value={novaTransacao.forma}
+                    onChange={(e) => setNovaTransacao({ ...novaTransacao, forma: e.target.value })}
+                    className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-1.5 py-2 text-xs"
+                  >
+                    <option>Pix</option>
+                    <option>Dinheiro</option>
+                    <option>Cartão de Crédito</option>
+                    <option>Cartão de Débito</option>
+                  </select>
+                  <button type="submit" className="sm:col-span-1 bg-amber-500 text-slate-950 font-bold py-2 rounded-lg text-xs">
+                    +
                   </button>
                 </form>
 
                 <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {transacoesFiltradas.map((t) => (
-                    <div key={t.id} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
-                      {transacaoEditando && transacaoEditando.id === t.id ? (
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap gap-2">
-                            <select
-                              value={transacaoEditando.tipo}
-                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, tipo: e.target.value })}
-                              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
-                            >
-                              <option value="entrada">Entrada (+)</option>
-                              <option value="saida">Saída (-)</option>
-                            </select>
-                            <input
-                              type="text"
-                              value={transacaoEditando.desc}
-                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, desc: e.target.value })}
-                              className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
-                            />
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={transacaoEditando.valor}
-                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, valor: e.target.value })}
-                              className="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
-                            />
-                            <select
-                              value={transacaoEditando.forma}
-                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, forma: e.target.value })}
-                              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
-                            >
-                              <option>Pix</option>
-                              <option>Dinheiro</option>
-                              <option>Cartão de Crédito</option>
-                              <option>Cartão de Débito</option>
-                              <option>Boleto</option>
-                            </select>
+                  {transacoesFiltradas.length === 0 ? (
+                    <p className="text-xs text-slate-500 text-center py-6">Nenhuma movimentação neste período.</p>
+                  ) : (
+                    transacoesFiltradas.map((t) => (
+                      <div key={t.id} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-xs">
+                        {transacaoEditando && transacaoEditando.id === t.id ? (
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap gap-2">
+                              <select
+                                value={transacaoEditando.tipo}
+                                onChange={(e) => setTransacaoEditando({ ...transacaoEditando, tipo: e.target.value })}
+                                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
+                              >
+                                <option value="entrada">Entrada (+)</option>
+                                <option value="saida">Saída (-)</option>
+                              </select>
+                              <input
+                                type="text"
+                                value={transacaoEditando.desc}
+                                onChange={(e) => setTransacaoEditando({ ...transacaoEditando, desc: e.target.value })}
+                                className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
+                              />
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={transacaoEditando.valor}
+                                onChange={(e) => setTransacaoEditando({ ...transacaoEditando, valor: e.target.value })}
+                                className="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
+                              />
+                              <select
+                                value={transacaoEditando.forma}
+                                onChange={(e) => setTransacaoEditando({ ...transacaoEditando, forma: e.target.value })}
+                                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs"
+                              >
+                                <option>Pix</option>
+                                <option>Dinheiro</option>
+                                <option>Cartão de Crédito</option>
+                                <option>Cartão de Débito</option>
+                                <option>Boleto</option>
+                              </select>
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <button
+                                onClick={salvarEdicaoTransacao}
+                                className="bg-emerald-500 text-slate-950 font-bold px-2.5 py-1 rounded flex items-center gap-1"
+                              >
+                                <Check size={12} /> Salvar
+                              </button>
+                              <button
+                                onClick={() => setTransacaoEditando(null)}
+                                className="bg-slate-800 text-slate-300 px-2.5 py-1 rounded flex items-center gap-1"
+                              >
+                                <X size={12} /> Cancelar
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={salvarEdicaoTransacao}
-                              className="bg-emerald-500 text-slate-950 font-bold px-2.5 py-1 rounded flex items-center gap-1"
-                            >
-                              <Check size={12} /> Salvar
-                            </button>
-                            <button
-                              onClick={() => setTransacaoEditando(null)}
-                              className="bg-slate-800 text-slate-300 px-2.5 py-1 rounded flex items-center gap-1"
-                            >
-                              <X size={12} /> Cancelar
-                            </button>
+                        ) : (
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <p className="font-semibold text-slate-200">{t.desc}</p>
+                              <span className="text-slate-500">{t.data} • {t.forma}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`font-bold ${t.tipo === 'entrada' ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {t.tipo === 'entrada' ? '+' : '-'} R$ {Number(t.valor).toFixed(2)}
+                              </span>
+                              <button
+                                onClick={() => setTransacaoEditando({ ...t })}
+                                className="text-amber-400 hover:text-amber-300 p-1"
+                                title="Editar lançamento"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                              <button
+                                onClick={() => excluirTransacao(t.id)}
+                                className="text-red-400 hover:text-red-300 p-1"
+                                title="Excluir lançamento"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="font-semibold text-slate-200">{t.desc}</p>
-                            <span className="text-slate-500">{t.data} • {t.forma}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className={`font-bold ${t.tipo === 'entrada' ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {t.tipo === 'entrada' ? '+' : '-'} R$ {Number(t.valor).toFixed(2)}
-                            </span>
-                            <button
-                              onClick={() => setTransacaoEditando({ ...t })}
-                              className="text-amber-400 hover:text-amber-300 p-1"
-                              title="Editar lançamento"
-                            >
-                              <Edit2 size={13} />
-                            </button>
-                            <button
-                              onClick={() => excluirTransacao(t.id)}
-                              className="text-red-400 hover:text-red-300 p-1"
-                              title="Excluir lançamento"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                        )}
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
@@ -1212,7 +1496,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 6: CRM DE CLIENTES ================= */}
+        {/* ================= ABA 6: CRM DE CLIENTES COM HISTÓRICO ================= */}
         {abaAtiva === 'clientes' && (
           <div className="space-y-6">
             <form onSubmit={criarCliente} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
@@ -1255,17 +1539,51 @@ export default function App() {
               </button>
             </form>
 
+            {clienteHistoricoSelecionado && (
+              <div className="bg-slate-900 p-4 rounded-xl border border-amber-500/50 space-y-3">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-bold text-amber-400 text-sm">
+                    Histórico de Serviços: {clienteHistoricoSelecionado.nome}
+                  </h3>
+                  <button onClick={() => setClienteHistoricoSelecionado(null)} className="text-slate-400 hover:text-slate-200">
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="space-y-2 text-xs">
+                  {ordensServico
+                    .filter((os) => os.cliente.toLowerCase() === clienteHistoricoSelecionado.nome.toLowerCase())
+                    .map((os) => (
+                      <div key={os.id} className="bg-slate-950 p-2 rounded border border-slate-800 flex justify-between">
+                        <span>{os.data} — {os.desc}</span>
+                        <span className="text-amber-400 font-bold">R$ {Number(os.valor).toFixed(2)} ({os.status})</span>
+                      </div>
+                    ))}
+                  {ordensServico.filter((os) => os.cliente.toLowerCase() === clienteHistoricoSelecionado.nome.toLowerCase()).length === 0 && (
+                    <p className="text-slate-500">Nenhuma OS registada para este cliente ainda.</p>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {clientes.map((c) => (
-                <div key={c.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-start">
-                  <div>
-                    <span className="text-[10px] bg-slate-800 text-amber-400 px-2 py-0.5 rounded">{c.tipo}</span>
-                    <h3 className="font-bold text-base mt-1">{c.nome}</h3>
-                    <p className="text-xs text-slate-400 mt-1 flex items-center gap-1"><Phone size={12} /> {c.tel || 'Sem telefone'}</p>
-                    <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><MapPin size={12} /> {c.endereco || 'Sem endereço'}</p>
+                <div key={c.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between gap-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="text-[10px] bg-slate-800 text-amber-400 px-2 py-0.5 rounded">{c.tipo}</span>
+                      <h3 className="font-bold text-base mt-1">{c.nome}</h3>
+                      <p className="text-xs text-slate-400 mt-1 flex items-center gap-1"><Phone size={12} /> {c.tel || 'Sem telefone'}</p>
+                      <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><MapPin size={12} /> {c.endereco || 'Sem endereço'}</p>
+                    </div>
+                    <button onClick={() => excluirCliente(c.id)} className="text-red-400">
+                      <Trash2 size={16} />
+                    </button>
                   </div>
-                  <button onClick={() => excluirCliente(c.id)} className="text-red-400">
-                    <Trash2 size={16} />
+                  <button
+                    onClick={() => setClienteHistoricoSelecionado(c)}
+                    className="w-full bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 py-1.5 rounded-lg"
+                  >
+                    Ver Histórico de OS
                   </button>
                 </div>
               ))}
@@ -1276,7 +1594,22 @@ export default function App() {
         {/* ================= ABA 7: GERADOR DE ORÇAMENTOS ================= */}
         {abaAtiva === 'orcamento' && (
           <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4 max-w-3xl mx-auto">
-            <h2 className="font-bold text-amber-400">Gerador Rápido de Orçamento (WhatsApp)</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h2 className="font-bold text-amber-400">Gerador Rápido de Orçamento (WhatsApp)</h2>
+              {clientes.length > 0 && (
+                <select
+                  onChange={(e) => selecionarClienteParaOrcamento(e.target.value)}
+                  defaultValue=""
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300"
+                >
+                  <option value="" disabled>Puxar cliente cadastrado...</option>
+                  {clientes.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nome}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
                 type="text"
