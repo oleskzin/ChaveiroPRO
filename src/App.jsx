@@ -6,7 +6,7 @@ import {
   MapPin, RefreshCw, ShoppingCart, ArrowUpCircle, ArrowDownCircle, 
   Share2, AlertCircle, X, Check, AlertTriangle, Filter, LayoutDashboard,
   Download, ShieldCheck, Zap, Clock, Award, Calculator, Building2, Settings,
-  CreditCard, UserCheck, Send, FolderClock
+  CreditCard, UserCheck, Send, FolderClock, UserPlus
 } from 'lucide-react';
 
 export default function App() {
@@ -15,12 +15,19 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [erroConexao, setErroConexao] = useState(null);
 
-  // Configuração das Unidades + Funcionário (editável no app)
+  // Configuração das Unidades (editável no app)
   const [unidadesConfig, setUnidadesConfig] = useState([
-    { id: 'ponto1', nome: 'Ponto 1 (Principal)', endereco: 'Endereço do Ponto 1 - Sepetiba', funcionario_nome: 'Funcionário P1', funcionario_tel: '' },
-    { id: 'ponto2', nome: 'Ponto 2 (Filial)', endereco: 'Endereço do Ponto 2 - Sepetiba', funcionario_nome: 'Funcionário P2', funcionario_tel: '' }
+    { id: 'ponto1', nome: 'Ponto 1 (Principal)', endereco: 'Endereço do Ponto 1 - Sepetiba' },
+    { id: 'ponto2', nome: 'Ponto 2 (Filial)', endereco: 'Endereço do Ponto 2 - Sepetiba' }
   ]);
   const [modalConfigUnidades, setModalConfigUnidades] = useState(false);
+
+  // Lista permanente de Funcionários cadastrados
+  const [funcionarios, setFuncionarios] = useState(() => {
+    const salvoLocal = localStorage.getItem('luisinho_funcionarios');
+    return salvoLocal ? JSON.parse(salvoLocal) : [];
+  });
+  const [novoFuncionario, setNovoFuncionario] = useState({ nome: '', tel: '', unidade: 'ponto1' });
 
   // Estados das tabelas no Supabase
   const [estoque, setEstoque] = useState([]);
@@ -34,7 +41,6 @@ export default function App() {
 
   // ================= ESTADOS GLOBAIS DE ENVIO WHATSAPP =================
   const [comprovanteAtivo, setComprovanteAtivo] = useState(null);
-  const [tarefaFuncionarioAtiva, setTarefaFuncionarioAtiva] = useState(null);
 
   // ================= ESTADOS DO PDV =================
   const [buscaPdv, setBuscaPdv] = useState('');
@@ -68,9 +74,10 @@ export default function App() {
 
   // ================= ESTADOS DE OS, AGENDA E CLIENTES =================
   const [novaOS, setNovaOS] = useState({
-    cliente: '', tel: '', desc: '', valor: '',
+    cliente: '', tel: '', endereco: '', desc: '', valor: '',
     forma_pgto: 'Receber na Entrega (Pix/Cartão)',
     garantia: '90 dias', obs_tecnica: '',
+    funcionario_id: '',
     itens_usados: []
   });
   const [itemTempOS, setItemTempOS] = useState({ chave_id: '', qtd: 1 });
@@ -78,6 +85,7 @@ export default function App() {
   const [novoAgendamento, setNovoAgendamento] = useState({
     cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '',
     taxa_deslocamento: 0, valor_estimado: 80,
+    funcionario_id: '',
     itens_usados: []
   });
   const [itemTempAg, setItemTempAg] = useState({ chave_id: '', qtd: 1 });
@@ -100,10 +108,13 @@ export default function App() {
     itens: [{ desc: '', qtd: 1, valor: 0 }],
     obs: 'Validade: 7 dias. Garantia de 90 dias.'
   });
-  const [filtroStatusOrcamento, setFiltroStatusOrcamento] = useState('standby'); // 'standby', 'aprovado', 'todos'
+  const [filtroStatusOrcamento, setFiltroStatusOrcamento] = useState('standby');
 
   const unidadeOperacional = unidadeAtiva === 'todas' ? 'ponto1' : unidadeAtiva;
   const infoUnidadeAtual = unidadesConfig.find((u) => u.id === unidadeOperacional) || unidadesConfig[0];
+
+  // Funcionário padrão da unidade ativa (para já vir selecionado automaticamente)
+  const funcionarioPadraoUnidade = funcionarios.find((f) => f.unidade === unidadeOperacional) || funcionarios[0] || null;
 
   // Carregar dados do Supabase
   const carregarDados = async () => {
@@ -119,7 +130,8 @@ export default function App() {
         { data: cli },
         { data: tab },
         { data: uni },
-        { data: orcs }
+        { data: orcs },
+        { data: funcs }
       ] = await Promise.all([
         supabase.from('estoque').select('*').order('nome', { ascending: true }),
         supabase.from('transacoes').select('*').order('timestamp', { ascending: false }),
@@ -129,7 +141,8 @@ export default function App() {
         supabase.from('clientes').select('*').order('nome', { ascending: true }),
         supabase.from('tabela_precos').select('*').order('id', { ascending: true }),
         supabase.from('unidades_config').select('*').order('id', { ascending: true }),
-        supabase.from('orcamentos').select('*').order('id', { ascending: false })
+        supabase.from('orcamentos').select('*').order('id', { ascending: false }),
+        supabase.from('funcionarios').select('*').order('nome', { ascending: true })
       ]);
 
       if (errEst) throw errEst;
@@ -142,6 +155,10 @@ export default function App() {
       if (tab) setTabelaPrecos(tab);
       if (uni && uni.length > 0) setUnidadesConfig(uni);
       if (orcs) setOrcamentosSalvos(orcs);
+      if (funcs && funcs.length > 0) {
+        setFuncionarios(funcs);
+        localStorage.setItem('luisinho_funcionarios', JSON.stringify(funcs));
+      }
     } catch (err) {
       console.error('Erro ao buscar dados:', err);
       setErroConexao(err.message || 'Falha ao conectar com o Supabase.');
@@ -182,6 +199,18 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   });
+
+  // ================= HELPER: ABRIR WHATSAPP COM CODIFICAÇÃO SEGURA (NÃO CORTA # NEM EMOJIS) =================
+  const abrirWhatsAppSeguro = (telefone, textoMensagem) => {
+    const numeroLimpo = (telefone || '').replace(/\D/g, '');
+    if (!numeroLimpo) {
+      alert('Informe um número de WhatsApp com DDD válido.');
+      return;
+    }
+    const numeroComDDI = numeroLimpo.startsWith('55') && numeroLimpo.length >= 12 ? numeroLimpo : `55${numeroLimpo}`;
+    const urlSegura = `https://api.whatsapp.com/send?phone=${numeroComDDI}&text=${encodeURIComponent(textoMensagem)}`;
+    window.open(urlSegura, '_blank');
+  };
 
   // ================= FILTROS POR UNIDADE =================
   const filtraUnidade = (item) => {
@@ -228,81 +257,139 @@ export default function App() {
 
   // ================= HELPER: ENVIAR COMPROVANTE AO CLIENTE =================
   const dispararComprovanteWhatsApp = (dados) => {
-    const numeroLimpo = (dados.tel || '').replace(/\D/g, '');
-    if (!numeroLimpo) {
-      alert('Digite o número de WhatsApp com DDD antes de enviar o comprovante.');
-      return;
-    }
-    const numeroComDDI = numeroLimpo.startsWith('55') && numeroLimpo.length >= 12 ? numeroLimpo : `55${numeroLimpo}`;
     const dataAtual = new Date().toLocaleDateString('pt-BR');
     const uniObj = unidadesConfig.find((u) => u.id === (dados.unidade || unidadeOperacional)) || infoUnidadeAtual;
     const statusPgto = dados.forma === 'A Receber (Fiado)' ? 'Pendente / Faturado' : `Pago (${dados.forma})`;
-    const linhaGarantia = dados.garantia ? `%0A*Garantia:* ${dados.garantia}` : '';
-    const linhaObs = dados.obs ? `%0A*Obs:* ${dados.obs}` : '';
 
-    const texto = `*LUISINHO CHAVEIRO - COMPROVANTE*%0A📍 *Unidade:* ${uniObj.nome}%0A📌 *Local:* ${uniObj.endereco}%0A📅 *Data:* ${dataAtual}%0A👤 *Cliente:* ${dados.cliente || 'Cliente'}%0A%0A*Serviços / Produtos:*%0A${dados.itensTexto}%0A%0A💰 *Valor Total:* R$ ${Number(dados.total).toFixed(2)}%0A✅ *Situação:* ${statusPgto}${linhaGarantia}${linhaObs}%0A%0A_Guarde este comprovante para sua garantia. Obrigado pela preferência!_`;
-    window.open(`https://wa.me/${numeroComDDI}?text=${texto}`, '_blank');
+    const linhas = [
+      `*LUISINHO CHAVEIRO - COMPROVANTE*`,
+      `*Unidade:* ${uniObj.nome}`,
+      `*Local:* ${uniObj.endereco}`,
+      `*Data:* ${dataAtual}`,
+      `*Cliente:* ${dados.cliente || 'Cliente'}`,
+      ``,
+      `*Serviços / Produtos:*`,
+      dados.itensTexto,
+      ``,
+      `*Valor Total:* R$ ${Number(dados.total).toFixed(2)}`,
+      `*Situação:* ${statusPgto}`
+    ];
+
+    if (dados.garantia) linhas.push(`*Garantia:* ${dados.garantia}`);
+    if (dados.obs) linhas.push(`*Obs:* ${dados.obs}`);
+    linhas.push(``, `_Guarde este comprovante para sua garantia. Obrigado pela preferência!_`);
+
+    abrirWhatsAppSeguro(dados.tel, linhas.join('\n'));
   };
 
-  // ================= HELPER: ENVIAR FICHA DE SERVIÇO PARA O FUNCIONÁRIO =================
-  const prepararEnvioParaFuncionario = (tipo, registro) => {
+  // ================= HELPER: ENVIAR FICHA COMPLETA DIRETO PRO WHATSAPP DO FUNCIONÁRIO =================
+  const enviarDiretoParaFuncionario = (tipo, registro) => {
     const uniObj = unidadesConfig.find((u) => u.id === (registro.unidade || unidadeOperacional)) || infoUnidadeAtual;
-    const listaMat = Array.isArray(registro.itens_usados) && registro.itens_usados.length > 0
-      ? registro.itens_usados.map((m) => `${m.qtd}x ${m.nome || m.id}`).join(', ')
-      : 'Nenhum material específico baixado';
 
-    if (tipo === 'os') {
-      setTarefaFuncionarioAtiva({
-        titulo: `Ordem de Serviço #${registro.id.toString().slice(-4)}`,
-        unidadeNome: uniObj.nome,
-        funcionarioNome: uniObj.funcionario_nome || 'Funcionário',
-        funcionarioTel: uniObj.funcionario_tel || '',
-        cliente: registro.cliente,
-        clienteTel: registro.tel || 'Não informado',
-        endereco: 'Atendimento na Loja / Ver descrição',
-        servico: registro.desc,
-        materiais: listaMat,
-        valor: Number(registro.valor),
-        formaPgto: registro.forma_pgto || 'A combinar / Na entrega',
-        horario: registro.data
-      });
-    } else {
-      const totalSoc = Number(registro.valor_estimado || 0) + Number(registro.taxa_deslocamento || 0);
-      setTarefaFuncionarioAtiva({
-        titulo: `Socorro Externo (${registro.data} às ${registro.hora})`,
-        unidadeNome: uniObj.nome,
-        funcionarioNome: uniObj.funcionario_nome || 'Funcionário',
-        funcionarioTel: uniObj.funcionario_tel || '',
-        cliente: registro.cliente,
-        clienteTel: registro.tel || 'Não informado',
-        endereco: registro.endereco,
-        servico: registro.servico,
-        materiais: listaMat,
-        valor: totalSoc,
-        formaPgto: 'Receber no Local (Pix/Cartão/Dinheiro)',
-        horario: `${registro.data} às ${registro.hora}`
-      });
-    }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+    // 1. Tenta pegar o funcionário gravado na própria OS/Socorro; se não tiver, pega o funcionário padrão da unidade
+    const telFunc = registro.funcionario_tel || funcionarioPadraoUnidade?.tel || '';
+    const nomeFunc = registro.funcionario_nome || funcionarioPadraoUnidade?.nome || 'Funcionário';
 
-  const dispararTarefaFuncionarioWhatsApp = (dados) => {
-    const numeroLimpo = (dados.funcionarioTel || '').replace(/\D/g, '');
-    if (!numeroLimpo) {
-      alert('Informe o WhatsApp com DDD do funcionário (você pode deixá-lo salvo no ícone de engrenagem no topo).');
+    if (!telFunc) {
+      alert('Cadastre o nome e o WhatsApp do seu funcionário clicando no botão de Engrenagem/Equipe no topo da tela (você só precisa fazer isso uma única vez!).');
+      setModalConfigUnidades(true);
       return;
     }
-    const numeroComDDI = numeroLimpo.startsWith('55') && numeroLimpo.length >= 12 ? numeroLimpo : `55${numeroLimpo}`;
 
-    const texto = `🔧 *FICHA DE SERVIÇO - LUISINHO CHAVEIRO*%0A📍 *Unidade:* ${dados.unidadeNome}%0A📋 *Ref:* ${dados.titulo}%0A⏰ *Data/Hora:* ${dados.horario}%0A%0A👤 *Cliente:* ${dados.cliente}%0A📞 *Contato Cliente:* ${dados.clienteTel}%0A📌 *Endereço / Local:* ${dados.endereco}%0A%0A🛠 *O que fazer:*%0A${dados.servico}%0A%0A📦 *Materiais / Peças:*%0A${dados.materiais}%0A%0A💰 *Valor a Cobrar:* R$ ${Number(dados.valor).toFixed(2)}%0A💳 *Pagamento:* ${dados.formaPgto}`;
-    window.open(`https://wa.me/${numeroComDDI}?text=${texto}`, '_blank');
+    const listaMat = Array.isArray(registro.itens_usados) && registro.itens_usados.length > 0
+      ? registro.itens_usados.map((m) => `- ${m.qtd}x ${m.nome || m.id}`).join('\n')
+      : '- Nenhum material específico do estoque';
+
+    // Procura endereço do cliente no cadastro caso não esteja preenchido na OS
+    const clienteCadastrado = clientes.find((c) => c.nome.toLowerCase() === (registro.cliente || '').toLowerCase());
+    const enderecoFinal = registro.endereco || clienteCadastrado?.endereco || 'Atendimento na Loja / Consultar cliente';
+    const telefoneCliente = registro.tel || clienteCadastrado?.tel || 'Não informado';
+
+    if (tipo === 'os') {
+      const codigoOS = registro.id.toString().slice(-4);
+      const mensagemOS = [
+        `*FICHA DE SERVIÇO - LUISINHO CHAVEIRO*`,
+        `*Unidade:* ${uniObj.nome}`,
+        `*Responsável:* ${nomeFunc}`,
+        `*Ref:* Ordem de Serviço N° ${codigoOS}`,
+        `*Data:* ${registro.data}`,
+        `----------------------------------`,
+        `*DADOS DO CLIENTE:*`,
+        `*Nome:* ${registro.cliente}`,
+        `*WhatsApp Cliente:* ${telefoneCliente}`,
+        `*Endereço / Local:* ${enderecoFinal}`,
+        `----------------------------------`,
+        `*SERVIÇO A REALIZAR:*`,
+        `${registro.desc}`,
+        ``,
+        `*MATERIAIS / CHAVES:*`,
+        `${listaMat}`,
+        `----------------------------------`,
+        `*FINANCEIRO / COBRANÇA:*`,
+        `*Valor Total:* R$ ${Number(registro.valor).toFixed(2)}`,
+        `*Forma / Condição:* ${registro.forma_pgto || 'Receber na Entrega'}`
+      ].join('\n');
+
+      abrirWhatsAppSeguro(telFunc, mensagemOS);
+    } else {
+      const totalSoc = Number(registro.valor_estimado || 0) + Number(registro.taxa_deslocamento || 0);
+      const mensagemSocorro = [
+        `*CHAMADO DE SOCORRO - LUISINHO CHAVEIRO*`,
+        `*Unidade:* ${uniObj.nome}`,
+        `*Responsável:* ${nomeFunc}`,
+        `*Data e Hora:* ${registro.data} às ${registro.hora}`,
+        `----------------------------------`,
+        `*DADOS DO CLIENTE:*`,
+        `*Nome:* ${registro.cliente}`,
+        `*WhatsApp Cliente:* ${telefoneCliente}`,
+        `*Endereço do Socorro:* ${registro.endereco}`,
+        `----------------------------------`,
+        `*SERVIÇO A REALIZAR:*`,
+        `${registro.servico}`,
+        ``,
+        `*MATERIAIS / PEÇAS:*`,
+        `${listaMat}`,
+        `----------------------------------`,
+        `*FINANCEIRO / COBRANÇA:*`,
+        `*Valor Total a Cobrar:* R$ ${totalSoc.toFixed(2)}`
+      ].join('\n');
+
+      abrirWhatsAppSeguro(telFunc, mensagemSocorro);
+    }
   };
 
-  // Salvar configuração de nome/endereço/funcionário dos 2 pontos
+  // ================= GERENCIAR FUNCIONÁRIOS E UNIDADES =================
+  const adicionarFuncionario = async (e) => {
+    e.preventDefault();
+    if (!novoFuncionario.nome || !novoFuncionario.tel) return;
+    const itemFunc = {
+      id: Date.now(),
+      nome: novoFuncionario.nome.trim(),
+      tel: novoFuncionario.tel.trim(),
+      unidade: novoFuncionario.unidade || 'ponto1'
+    };
+
+    const novaLista = [...funcionarios, itemFunc];
+    setFuncionarios(novaLista);
+    localStorage.setItem('luisinho_funcionarios', JSON.stringify(novaLista));
+    await supabase.from('funcionarios').upsert([itemFunc]);
+    setNovoFuncionario({ nome: '', tel: '', unidade: unidadeOperacional });
+    carregarDados();
+  };
+
+  const removerFuncionario = async (id) => {
+    if (!window.confirm('Remover este funcionário da lista?')) return;
+    const novaLista = funcionarios.filter((f) => f.id !== id);
+    setFuncionarios(novaLista);
+    localStorage.setItem('luisinho_funcionarios', JSON.stringify(novaLista));
+    await supabase.from('funcionarios').delete().eq('id', id);
+    carregarDados();
+  };
+
   const salvarConfigUnidades = async (e) => {
     e.preventDefault();
     for (const u of unidadesConfig) {
-      await supabase.from('unidades_config').upsert([u]);
+      await supabase.from('unidades_config').upsert([{ id: u.id, nome: u.nome, endereco: u.endereco }]);
     }
     setModalConfigUnidades(false);
     carregarDados();
@@ -370,8 +457,8 @@ export default function App() {
     const custoTotalComTaxa = custoChaves + valorTaxaMaquininhaPdv;
 
     const resumoDesc = carrinho.map((i) => `${i.qtdVenda}x ${i.nome}`).join(', ');
-    const linhasRecibo = carrinho.map((i) => `- ${i.qtdVenda}x ${i.nome}: R$ ${(Number(i.qtdVenda) * Number(i.precoEditado)).toFixed(2)}`).join('%0A');
-    const linhaDesconto = valorDescontoPdv > 0 ? `%0A*Desconto aplicado:* -R$ ${valorDescontoPdv.toFixed(2)}` : '';
+    const linhasRecibo = carrinho.map((i) => `- ${i.qtdVenda}x ${i.nome}: R$ ${(Number(i.qtdVenda) * Number(i.precoEditado)).toFixed(2)}`).join('\n');
+    const linhaDesconto = valorDescontoPdv > 0 ? `\n*Desconto aplicado:* -R$ ${valorDescontoPdv.toFixed(2)}` : '';
 
     const prefixoCliente = clientePdv.nome ? ` (${clientePdv.nome})` : '';
     const detalheForma = (formaPgto.includes('Cartão') && taxaSelecionadaObj) ? `${formaPgto} - ${taxaSelecionadaObj.nome}` : formaPgto;
@@ -493,11 +580,21 @@ export default function App() {
     }
 
     if (enviarNoZap) {
-      const numeroLimpo = calcCliente.tel.replace(/\D/g, '');
-      const numeroComDDI = numeroLimpo.startsWith('55') && numeroLimpo.length >= 12 ? numeroLimpo : `55${numeroLimpo}`;
-      const infoParcela = taxaSimuladorObj ? `%0A💳 *No Cartão (${taxaSimuladorObj.nome}):* R$ ${totalFinalSimulador.toFixed(2)}` : '';
-      const texto = `*LUISINHO CHAVEIRO - ORÇAMENTO*%0A📍 *Unidade:* ${infoUnidadeAtual.nome}%0A👤 *Cliente:* ${novoOrc.cliente}%0A%0A🔧 *Serviço cotado:*%0A- ${resumo}%0A%0A💰 *Valor à vista (Pix/Dinheiro):* R$ ${subtotalSimulador.toFixed(2)}${infoParcela}%0A%0A_Seu orçamento ficou salvo em nosso sistema! Podemos confirmar?_`;
-      window.open(`https://wa.me/${numeroComDDI}?text=${texto}`, '_blank');
+      const infoParcela = taxaSimuladorObj ? `\n*No Cartão (${taxaSimuladorObj.nome}):* R$ ${totalFinalSimulador.toFixed(2)}` : '';
+      const texto = [
+        `*LUISINHO CHAVEIRO - ORÇAMENTO*`,
+        `*Unidade:* ${infoUnidadeAtual.nome}`,
+        `*Cliente:* ${novoOrc.cliente}`,
+        ``,
+        `*Serviço cotado:*`,
+        `- ${resumo}`,
+        ``,
+        `*Valor à vista (Pix/Dinheiro):* R$ ${subtotalSimulador.toFixed(2)}${infoParcela}`,
+        ``,
+        `_Seu orçamento ficou salvo em nosso sistema! Podemos confirmar?_`
+      ].join('\n');
+
+      abrirWhatsAppSeguro(calcCliente.tel, texto);
     } else {
       alert('Cotação salva na fila de Orçamentos em Standby!');
     }
@@ -623,9 +720,9 @@ export default function App() {
     const linhas = itensEstoqueBaixo.map((i) => {
       const sugerido = Math.max(5, Number(i.minimo || 3) * 3 - Number(i.qtd));
       return `- [${i.id}] ${i.nome} (Atual: ${i.qtd} un) -> Pedir: *${sugerido} un*`;
-    }).join('%0A');
-    const texto = `*PEDIDO DE REPOSIÇÃO - LUISINHO CHAVEIRO (${infoUnidadeAtual.nome})*%0AOlá! Gostaria de pedir os seguintes itens:%0A%0A${linhas}`;
-    window.open(`https://wa.me/?text=${texto}`, '_blank');
+    }).join('\n');
+    const texto = `*PEDIDO DE REPOSIÇÃO - LUISINHO CHAVEIRO (${infoUnidadeAtual.nome})*\nOlá! Gostaria de pedir os seguintes itens:\n\n${linhas}`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`, '_blank');
   };
 
   const estoqueFiltrado = estoqueUnidade.filter((item) => {
@@ -643,7 +740,7 @@ export default function App() {
   const capitalTotalEstoque = estoqueUnidade.reduce((acc, i) => acc + Number(i.custo || 0) * Number(i.qtd || 0), 0);
   const potencialVendaEstoque = estoqueUnidade.reduce((acc, i) => acc + Number(i.venda || 0) * Number(i.qtd || 0), 0);
 
-  // ================= FUNÇÕES DE ORDENS DE SERVIÇO (COM MULTI-ITENS E ENVIO AO FUNCIONÁRIO) =================
+  // ================= FUNÇÕES DE ORDENS DE SERVIÇO (COM FUNCIONÁRIO SALVO E MULTI-ITENS) =================
   const adicionarMaterialNaOS = () => {
     if (!itemTempOS.chave_id) return;
     const ch = estoqueUnidade.find((e) => e.id === itemTempOS.chave_id);
@@ -665,7 +762,15 @@ export default function App() {
 
   const criarOS = async (e, encaminharAoFuncionario = false) => {
     if (e) e.preventDefault();
-    if (!novaOS.cliente || !novaOS.desc || !novaOS.valor) return;
+    if (!novaOS.cliente || !novaOS.desc || !novaOS.valor) {
+      alert('Preencha o Nome do Cliente, a Descrição do Serviço e o Valor Total.');
+      return;
+    }
+
+    // Identifica o funcionário escolhido no seletor ou usa o funcionário padrão da unidade
+    const funcObj = novaOS.funcionario_id
+      ? funcionarios.find((f) => f.id.toString() === novaOS.funcionario_id.toString())
+      : funcionarioPadraoUnidade;
 
     const custoTotalMateriais = novaOS.itens_usados.reduce((acc, m) => acc + Number(m.custo || 0) * Number(m.qtd || 1), 0);
     const detalheTecnico = [
@@ -679,6 +784,7 @@ export default function App() {
       id: Date.now(),
       cliente: novaOS.cliente,
       tel: novaOS.tel,
+      endereco: novaOS.endereco || '',
       desc: descCompleta,
       valor: Number(novaOS.valor),
       custo_insumo: custoTotalMateriais,
@@ -686,6 +792,8 @@ export default function App() {
       qtd_copias: novaOS.itens_usados[0]?.qtd || 0,
       itens_usados: novaOS.itens_usados,
       forma_pgto: novaOS.forma_pgto || 'Receber na Entrega',
+      funcionario_nome: funcObj?.nome || '',
+      funcionario_tel: funcObj?.tel || '',
       status: 'pendente',
       data: new Date().toLocaleDateString('pt-BR'),
       unidade: unidadeOperacional
@@ -697,16 +805,18 @@ export default function App() {
       return;
     }
 
-    await garantirCadastroCliente(novaOS.cliente, novaOS.tel, '', `OS: ${descCompleta}`);
+    await garantirCadastroCliente(novaOS.cliente, novaOS.tel, novaOS.endereco, `OS: ${descCompleta}`);
 
     if (encaminharAoFuncionario) {
-      prepararEnvioParaFuncionario('os', itemOS);
+      enviarDiretoParaFuncionario('os', itemOS);
     }
 
     setNovaOS({
-      cliente: '', tel: '', desc: '', valor: '',
+      cliente: '', tel: '', endereco: '', desc: '', valor: '',
       forma_pgto: 'Receber na Entrega (Pix/Cartão)',
-      garantia: '90 dias', obs_tecnica: '', itens_usados: []
+      garantia: '90 dias', obs_tecnica: '',
+      funcionario_id: '',
+      itens_usados: []
     });
     carregarDados();
   };
@@ -726,7 +836,7 @@ export default function App() {
     const novaTrans = {
       id: Date.now(),
       tipo: 'entrada',
-      desc: `OS #${os.id.toString().slice(-4)} (${os.cliente}): ${os.desc}${textoMateriais}`,
+      desc: `OS N° ${os.id.toString().slice(-4)} (${os.cliente}): ${os.desc}${textoMateriais}`,
       valor: Number(os.valor),
       custo_insumo: Number(os.custo_insumo || 0),
       forma: formaRecebimento,
@@ -745,21 +855,21 @@ export default function App() {
       }
     }
 
-    await garantirCadastroCliente(os.cliente, os.tel, '', `OS Concluída: ${os.desc}`);
+    await garantirCadastroCliente(os.cliente, os.tel, os.endereco || '', `OS Concluída: ${os.desc}`);
 
     const linhasReciboOS = [
       `- Serviço: ${os.desc}`,
       ...listaMat.map((m) => `- Material: ${m.qtd}x ${m.nome || m.id}`)
-    ].join('%0A');
+    ].join('\n');
 
     setComprovanteAtivo({
-      origem: `Ordem de Serviço #${os.id.toString().slice(-4)}`,
+      origem: `Ordem de Serviço N° ${os.id.toString().slice(-4)}`,
       cliente: os.cliente,
       tel: os.tel || '',
       itensTexto: linhasReciboOS,
       total: os.valor,
       forma: formaRecebimento,
-      obs: '',
+      obs: os.endereco ? `Local: ${os.endereco}` : '',
       garantia: '90 dias',
       unidade: os.unidade || unidadeOperacional
     });
@@ -794,7 +904,14 @@ export default function App() {
 
   const criarAgendamento = async (e, encaminharAoFuncionario = false) => {
     if (e) e.preventDefault();
-    if (!novoAgendamento.cliente || !novoAgendamento.endereco || !novoAgendamento.servico) return;
+    if (!novoAgendamento.cliente || !novoAgendamento.endereco || !novoAgendamento.servico) {
+      alert('Preencha Cliente, Endereço e Serviço.');
+      return;
+    }
+
+    const funcObj = novoAgendamento.funcionario_id
+      ? funcionarios.find((f) => f.id.toString() === novoAgendamento.funcionario_id.toString())
+      : funcionarioPadraoUnidade;
 
     const custoMateriais = novoAgendamento.itens_usados.reduce((acc, m) => acc + Number(m.custo || 0) * Number(m.qtd || 1), 0);
 
@@ -810,6 +927,8 @@ export default function App() {
       valor_estimado: Number(novoAgendamento.valor_estimado || 0),
       custo_insumo: custoMateriais,
       itens_usados: novoAgendamento.itens_usados,
+      funcionario_nome: funcObj?.nome || '',
+      funcionario_tel: funcObj?.tel || '',
       status: 'agendado',
       unidade: unidadeOperacional
     };
@@ -823,10 +942,10 @@ export default function App() {
     await garantirCadastroCliente(novoAgendamento.cliente, novoAgendamento.tel, novoAgendamento.endereco, `Socorro: ${novoAgendamento.servico}`);
 
     if (encaminharAoFuncionario) {
-      prepararEnvioParaFuncionario('socorro', itemAg);
+      enviarDiretoParaFuncionario('socorro', itemAg);
     }
 
-    setNovoAgendamento({ cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '', taxa_deslocamento: 0, valor_estimado: 80, itens_usados: [] });
+    setNovoAgendamento({ cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '', taxa_deslocamento: 0, valor_estimado: 80, funcionario_id: '', itens_usados: [] });
     carregarDados();
   };
 
@@ -864,7 +983,7 @@ export default function App() {
       `- Atendimento Externo: ${ag.servico}`,
       `- Local: ${ag.endereco}`,
       ...listaMat.map((m) => `- Material aplicado: ${m.qtd}x ${m.nome || m.id}`)
-    ].join('%0A');
+    ].join('\n');
 
     setComprovanteAtivo({
       origem: `Atendimento de Socorro (${ag.cliente})`,
@@ -1078,17 +1197,24 @@ export default function App() {
   const totalOrcamento = orcamento.itens.reduce((acc, i) => acc + Number(i.qtd) * Number(i.valor), 0);
 
   const dispararTextoOrcamentoWhatsApp = (orcObj) => {
-    const numeroLimpo = (orcObj.tel || '').replace(/\D/g, '');
-    if (!numeroLimpo) {
-      alert('Preencha o WhatsApp do cliente (com DDD) para enviar.');
-      return;
-    }
     const uniObj = unidadesConfig.find((u) => u.id === (orcObj.unidade || unidadeOperacional)) || infoUnidadeAtual;
-    const numeroComDDI = numeroLimpo.startsWith('55') && numeroLimpo.length >= 12 ? numeroLimpo : `55${numeroLimpo}`;
     const listaItens = Array.isArray(orcObj.itens) ? orcObj.itens : [];
-    const linhas = listaItens.map((i) => `- ${i.qtd}x ${i.desc}: R$ ${(Number(i.qtd) * Number(i.valor)).toFixed(2)}`).join('%0A');
-    const texto = `*LUISINHO CHAVEIRO - ORÇAMENTO*%0A📍 *Unidade:* ${uniObj.nome}%0A📌 *Local:* ${uniObj.endereco}%0A👤 *Cliente:* ${orcObj.cliente || 'Cliente'}%0A%0A*Itens / Serviços:*%0A${linhas}%0A%0A💰 *Total:* R$ ${Number(orcObj.total).toFixed(2)}%0A_${orcObj.obs || 'Validade: 7 dias.'}_`;
-    window.open(`https://wa.me/${numeroComDDI}?text=${texto}`, '_blank');
+    const linhas = listaItens.map((i) => `- ${i.qtd}x ${i.desc}: R$ ${(Number(i.qtd) * Number(i.valor)).toFixed(2)}`).join('\n');
+
+    const texto = [
+      `*LUISINHO CHAVEIRO - ORÇAMENTO*`,
+      `*Unidade:* ${uniObj.nome}`,
+      `*Local:* ${uniObj.endereco}`,
+      `*Cliente:* ${orcObj.cliente || 'Cliente'}`,
+      ``,
+      `*Itens / Serviços:*`,
+      linhas,
+      ``,
+      `*Total:* R$ ${Number(orcObj.total).toFixed(2)}`,
+      `_${orcObj.obs || 'Validade: 7 dias.'}_`
+    ].join('\n');
+
+    abrirWhatsAppSeguro(orcObj.tel, texto);
   };
 
   const salvarOrcamentoStandby = async (enviarZap = false) => {
@@ -1128,7 +1254,6 @@ export default function App() {
       dispararTextoOrcamentoWhatsApp(registroOrc);
     }
 
-    // Limpa o formulário para permitir criar outro orçamento imediatamente
     setOrcamento({
       id: null,
       cliente: '',
@@ -1153,16 +1278,20 @@ export default function App() {
   const aprovarOrcamentoVirarOS = async (orc) => {
     const listaItens = Array.isArray(orc.itens) ? orc.itens : [];
     const resumoItens = listaItens.map((i) => `${i.qtd}x ${i.desc}`).join(', ');
+    const cliCadastrado = clientes.find((c) => c.nome.toLowerCase() === (orc.cliente || '').toLowerCase());
 
     const itemOS = {
       id: Date.now(),
       cliente: orc.cliente || 'Cliente Orçamento',
-      tel: orc.tel || '',
+      tel: orc.tel || cliCadastrado?.tel || '',
+      endereco: cliCadastrado?.endereco || '',
       desc: resumoItens || 'Serviço aprovado via Orçamento',
       valor: Number(orc.total),
       custo_insumo: 0,
       itens_usados: [],
       forma_pgto: 'Receber na Entrega (Pix/Cartão)',
+      funcionario_nome: funcionarioPadraoUnidade?.nome || '',
+      funcionario_tel: funcionarioPadraoUnidade?.tel || '',
       status: 'pendente',
       data: new Date().toLocaleDateString('pt-BR'),
       unidade: orc.unidade || unidadeOperacional
@@ -1209,7 +1338,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col pb-24 md:pb-8">
-      {/* CABEÇALHO COM SELETOR DE UNIDADES (PONTO 1 / PONTO 2) */}
+      {/* CABEÇALHO COM SELETOR DE UNIDADES + BOTÃO DE EQUIPE/FUNCIONÁRIOS */}
       <header className="bg-slate-900 border-b border-slate-800 px-3 py-2.5 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -1255,10 +1384,10 @@ export default function App() {
 
             <button
               onClick={() => setModalConfigUnidades(true)}
-              className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 text-slate-300"
-              title="Configurar endereços e WhatsApp do Funcionário"
+              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 text-amber-400 text-xs font-bold flex items-center gap-1"
+              title="Cadastrar Funcionários e Endereços das Unidades"
             >
-              <Settings size={15} />
+              <Settings size={14} /> Equipe / Lojas
             </button>
             <button
               onClick={carregarDados}
@@ -1271,76 +1400,113 @@ export default function App() {
         </div>
       </header>
 
-      {/* MODAL PARA EDITAR ENDEREÇOS E WHATSAPP DO FUNCIONÁRIO DE CADA PONTO */}
+      {/* MODAL PARA CADASTRAR FUNCIONÁRIOS FIXOS E ENDEREÇOS DAS LOJAS */}
       {modalConfigUnidades && (
-        <div className="fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <form onSubmit={salvarConfigUnidades} className="bg-slate-900 border border-slate-700 rounded-xl p-4 max-w-md w-full space-y-4">
-            <div className="flex justify-between items-center">
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 max-w-lg w-full space-y-5 my-8">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-amber-400 flex items-center gap-2">
-                <Building2 size={18} /> Unidades & Funcionários
+                <UserCheck size={18} /> Equipe de Funcionários & Endereços
               </h3>
-              <button type="button" onClick={() => setModalConfigUnidades(false)} className="text-slate-400">
-                <X size={18} />
+              <button type="button" onClick={() => setModalConfigUnidades(false)} className="text-slate-400 hover:text-white">
+                <X size={20} />
               </button>
             </div>
-            <p className="text-xs text-slate-400">
-              Configure o endereço de cada ponto (sai no comprovante do cliente) e o WhatsApp do funcionário responsável por receber as Ordens de Serviço.
-            </p>
-            {unidadesConfig.map((uni, idx) => (
-              <div key={uni.id} className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
-                <span className="text-xs font-bold text-amber-400 uppercase">{uni.id}</span>
+
+            {/* CADASTRO PERMANENTE DE FUNCIONÁRIOS */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase text-sky-400">
+                1. Funcionários Salvos (Não precisa redigitar na OS)
+              </h4>
+              <form onSubmit={adicionarFuncionario} className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
                 <input
                   type="text"
-                  placeholder="Nome da Unidade (Ex: Ponto 1 - Matriz)"
-                  value={uni.nome}
-                  onChange={(e) => {
-                    const copia = [...unidadesConfig];
-                    copia[idx].nome = e.target.value;
-                    setUnidadesConfig(copia);
-                  }}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                  placeholder="Nome do Funcionário *"
+                  required
+                  value={novoFuncionario.nome}
+                  onChange={(e) => setNovoFuncionario({ ...novoFuncionario, nome: e.target.value })}
+                  className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
                 />
                 <input
-                  type="text"
-                  placeholder="Endereço Completo (Sai no Comprovante)"
-                  value={uni.endereco}
-                  onChange={(e) => {
-                    const copia = [...unidadesConfig];
-                    copia[idx].endereco = e.target.value;
-                    setUnidadesConfig(copia);
-                  }}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                  type="tel"
+                  placeholder="WhatsApp c/ DDD *"
+                  required
+                  value={novoFuncionario.tel}
+                  onChange={(e) => setNovoFuncionario({ ...novoFuncionario, tel: e.target.value })}
+                  className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
                 />
-                <div className="grid grid-cols-2 gap-2 pt-1">
+                <div className="flex gap-1.5">
+                  <select
+                    value={novoFuncionario.unidade}
+                    onChange={(e) => setNovoFuncionario({ ...novoFuncionario, unidade: e.target.value })}
+                    className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2 py-2 text-xs"
+                  >
+                    <option value="ponto1">Ponto 1</option>
+                    <option value="ponto2">Ponto 2</option>
+                  </select>
+                  <button type="submit" className="bg-sky-500 text-slate-950 font-bold px-3 py-2 rounded-lg text-xs">
+                    + Salvar
+                  </button>
+                </div>
+              </form>
+
+              {funcionarios.length === 0 ? (
+                <p className="text-xs text-slate-500">Nenhum funcionário cadastrado ainda. Adicione acima para envio em 1 clique.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {funcionarios.map((f) => (
+                    <div key={f.id} className="bg-slate-950 px-3 py-2 rounded-lg border border-slate-800 flex items-center justify-between text-xs">
+                      <div>
+                        <strong className="text-slate-100">{f.nome}</strong>
+                        <span className="text-slate-400 ml-2">WhatsApp: {f.tel}</span>
+                        <span className="ml-2 text-[10px] bg-slate-800 text-amber-400 px-1.5 py-0.5 rounded uppercase">{f.unidade}</span>
+                      </div>
+                      <button onClick={() => removerFuncionario(f.id)} className="text-red-400 p-1">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ENDEREÇOS DOS 2 PONTOS */}
+            <form onSubmit={salvarConfigUnidades} className="space-y-3 border-t border-slate-800 pt-4">
+              <h4 className="text-xs font-bold uppercase text-amber-400">
+                2. Endereços das Unidades (Saem no Comprovante)
+              </h4>
+              {unidadesConfig.map((uni, idx) => (
+                <div key={uni.id} className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <span className="text-xs font-bold text-amber-400 uppercase">{uni.id}</span>
                   <input
                     type="text"
-                    placeholder="Nome Funcionário"
-                    value={uni.funcionario_nome || ''}
+                    placeholder="Nome da Unidade"
+                    value={uni.nome}
                     onChange={(e) => {
                       const copia = [...unidadesConfig];
-                      copia[idx].funcionario_nome = e.target.value;
+                      copia[idx].nome = e.target.value;
                       setUnidadesConfig(copia);
                     }}
-                    className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-xs"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
                   />
                   <input
-                    type="tel"
-                    placeholder="WhatsApp Funcionário (DDD)"
-                    value={uni.funcionario_tel || ''}
+                    type="text"
+                    placeholder="Endereço Completo"
+                    value={uni.endereco}
                     onChange={(e) => {
                       const copia = [...unidadesConfig];
-                      copia[idx].funcionario_tel = e.target.value;
+                      copia[idx].endereco = e.target.value;
                       setUnidadesConfig(copia);
                     }}
-                    className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-2 text-xs"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
                   />
                 </div>
-              </div>
-            ))}
-            <button type="submit" className="w-full bg-amber-500 text-slate-950 font-bold py-2.5 rounded-lg text-sm">
-              Salvar Configurações
-            </button>
-          </form>
+              ))}
+              <button type="submit" className="w-full bg-amber-500 text-slate-950 font-bold py-2.5 rounded-lg text-sm">
+                Salvar Endereços & Fechar
+              </button>
+            </form>
+          </div>
         </div>
       )}
 
@@ -1365,53 +1531,7 @@ export default function App() {
         })}
       </nav>
 
-      {/* PAINEL GLOBAL 1: ENCAMINHAR TAREFA / OS PARA O WHATSAPP DO FUNCIONÁRIO */}
-      {tarefaFuncionarioAtiva && (
-        <div className="max-w-6xl w-full mx-auto px-4 pt-4">
-          <div className="bg-sky-950/90 border-2 border-sky-500 p-4 rounded-xl space-y-3 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[11px] uppercase tracking-wider text-sky-300 font-bold flex items-center gap-1">
-                  <UserCheck size={14} /> Encaminhar Serviço para Funcionário ({tarefaFuncionarioAtiva.unidadeNome})
-                </span>
-                <h3 className="font-bold text-base text-white mt-0.5">
-                  {tarefaFuncionarioAtiva.titulo} — Cliente: {tarefaFuncionarioAtiva.cliente}
-                </h3>
-              </div>
-              <button onClick={() => setTarefaFuncionarioAtiva(null)} className="text-slate-300 hover:text-white p-1">
-                <X size={20} />
-              </button>
-            </div>
-            <p className="text-xs text-sky-200">
-              <strong>Serviço:</strong> {tarefaFuncionarioAtiva.servico} | <strong>Cobrar:</strong> R$ {Number(tarefaFuncionarioAtiva.valor).toFixed(2)} ({tarefaFuncionarioAtiva.formaPgto})
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <input
-                type="text"
-                placeholder="Nome do Funcionário"
-                value={tarefaFuncionarioAtiva.funcionarioNome}
-                onChange={(e) => setTarefaFuncionarioAtiva({ ...tarefaFuncionarioAtiva, funcionarioNome: e.target.value })}
-                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2.5 text-sm text-white"
-              />
-              <input
-                type="tel"
-                placeholder="WhatsApp do Funcionário com DDD *"
-                value={tarefaFuncionarioAtiva.funcionarioTel}
-                onChange={(e) => setTarefaFuncionarioAtiva({ ...tarefaFuncionarioAtiva, funcionarioTel: e.target.value })}
-                className="bg-slate-950 border border-sky-400 rounded-lg px-3 py-2.5 text-sm text-white font-semibold"
-              />
-              <button
-                onClick={() => dispararTarefaFuncionarioWhatsApp(tarefaFuncionarioAtiva)}
-                className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2.5 px-4 rounded-lg text-sm flex items-center justify-center gap-2"
-              >
-                <Send size={16} /> Enviar Ficha pro Funcionário
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PAINEL GLOBAL 2: ENVIO DE COMPROVANTE WHATSAPP AO CLIENTE */}
+      {/* PAINEL GLOBAL: ENVIO DE COMPROVANTE WHATSAPP AO CLIENTE */}
       {comprovanteAtivo && (
         <div className="max-w-6xl w-full mx-auto px-4 pt-4">
           <div className="bg-emerald-950/90 border-2 border-emerald-500 p-4 rounded-xl space-y-3 shadow-lg">
@@ -2080,30 +2200,39 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 3: ORDENS DE SERVIÇO (COM ENCAMINHAMENTO PARA FUNCIONÁRIO) ================= */}
+        {/* ================= ABA 3: ORDENS DE SERVIÇO (COM FUNCIONÁRIO AUTOMÁTICO E ENDEREÇO) ================= */}
         {abaAtiva === 'os' && (
           <div className="space-y-6">
             <form onSubmit={(e) => criarOS(e, false)} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h2 className="font-bold text-amber-400">Emitir Ordem de Serviço ({infoUnidadeAtual.nome})</h2>
-                {clientes.length > 0 && (
-                  <select
-                    onChange={(e) => {
-                      const cli = clientes.find((c) => c.id.toString() === e.target.value);
-                      if (cli) setNovaOS({ ...novaOS, cliente: cli.nome, tel: cli.tel || '' });
-                    }}
-                    defaultValue=""
-                    className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300"
+                <div className="flex flex-wrap gap-2">
+                  {clientes.length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        const cli = clientes.find((c) => c.id.toString() === e.target.value);
+                        if (cli) setNovaOS({ ...novaOS, cliente: cli.nome, tel: cli.tel || '', endereco: cli.endereco || novaOS.endereco });
+                      }}
+                      defaultValue=""
+                      className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300"
+                    >
+                      <option value="" disabled>Puxar cliente salvo...</option>
+                      {clientes.map((c) => (
+                        <option key={c.id} value={c.id}>{c.nome}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setModalConfigUnidades(true)}
+                    className="bg-slate-950 border border-sky-700 text-sky-400 text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1"
                   >
-                    <option value="" disabled>Puxar cliente salvo...</option>
-                    {clientes.map((c) => (
-                      <option key={c.id} value={c.id}>{c.nome}</option>
-                    ))}
-                  </select>
-                )}
+                    <UserPlus size={13} /> {funcionarios.length === 0 ? 'Cadastrar Funcionário' : `Funcionários (${funcionarios.length})`}
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <input
                   type="text"
                   placeholder="Nome do Cliente *"
@@ -2121,16 +2250,26 @@ export default function App() {
                 />
                 <input
                   type="text"
-                  placeholder="O que será feito (Descrição) *"
+                  placeholder="Endereço / Local do Serviço (Sai na ficha)"
+                  value={novaOS.endereco}
+                  onChange={(e) => setNovaOS({ ...novaOS, endereco: e.target.value })}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <input
+                  type="text"
+                  placeholder="O que será feito (Descrição detalhada) *"
                   required
                   value={novaOS.desc}
                   onChange={(e) => setNovaOS({ ...novaOS, desc: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
                 />
                 <input
                   type="number"
                   step="0.01"
-                  placeholder="Valor Total (R$) *"
+                  placeholder="Valor Total Cobrado (R$) *"
                   required
                   value={novaOS.valor}
                   onChange={(e) => setNovaOS({ ...novaOS, valor: e.target.value })}
@@ -2188,7 +2327,25 @@ export default function App() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                {/* SELETOR DE FUNCIONÁRIO JÁ SALVO */}
+                <select
+                  value={novaOS.funcionario_id}
+                  onChange={(e) => setNovaOS({ ...novaOS, funcionario_id: e.target.value })}
+                  className="bg-slate-950 border border-sky-800 rounded-lg px-3 py-2 text-xs text-sky-300 font-bold"
+                >
+                  <option value="">
+                    {funcionarioPadraoUnidade
+                      ? `Funcionário: ${funcionarioPadraoUnidade.nome} (Padrão)`
+                      : 'Sem funcionário selecionado'}
+                  </option>
+                  {funcionarios.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      Funcionário: {f.nome} ({f.unidade.toUpperCase()})
+                    </option>
+                  ))}
+                </select>
+
                 <select
                   value={novaOS.forma_pgto}
                   onChange={(e) => setNovaOS({ ...novaOS, forma_pgto: e.target.value })}
@@ -2199,6 +2356,7 @@ export default function App() {
                   <option value="Sinal 50% Pago / Cobrar Restante">Pagamento: Sinal 50% Pago (Cobrar resto)</option>
                   <option value="Faturado / Condomínio">Pagamento: Faturado / Condomínio</option>
                 </select>
+
                 <select
                   value={novaOS.garantia}
                   onChange={(e) => setNovaOS({ ...novaOS, garantia: e.target.value })}
@@ -2209,9 +2367,10 @@ export default function App() {
                   <option value="1 ano">Garantia: 1 ano</option>
                   <option value="Sem garantia">Sem garantia</option>
                 </select>
+
                 <input
                   type="text"
-                  placeholder="Endereço / Placa / Obs pro funcionário"
+                  placeholder="Placa / Modelo Fechadura / Obs"
                   value={novaOS.obs_tecnica}
                   onChange={(e) => setNovaOS({ ...novaOS, obs_tecnica: e.target.value })}
                   className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
@@ -2227,7 +2386,7 @@ export default function App() {
                   onClick={() => criarOS(null, true)}
                   className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5"
                 >
-                  <Send size={15} /> Gerar OS & Encaminhar p/ Funcionário
+                  <Send size={15} /> Gerar OS & Já Abrir WhatsApp do Funcionário
                 </button>
               </div>
             </form>
@@ -2238,21 +2397,29 @@ export default function App() {
                   ? os.itens_usados
                   : (os.chave_id ? [{ id: os.chave_id, nome: os.chave_id, qtd: os.qtd_copias }] : []);
 
+                const nomeFuncExibido = os.funcionario_nome || funcionarioPadraoUnidade?.nome || '';
+
                 return (
                   <div key={os.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-3">
                     <div>
                       <div className="flex justify-between items-start">
-                        <span className="text-xs font-mono text-slate-400">OS #{os.id.toString().slice(-4)} • {os.data}</span>
+                        <span className="text-xs font-mono text-slate-400">OS N° {os.id.toString().slice(-4)} • {os.data}</span>
                         <span className={`text-xs px-2 py-0.5 rounded font-bold uppercase ${os.status === 'concluida' ? 'bg-emerald-950 text-emerald-400' : 'bg-amber-950 text-amber-400'}`}>
                           {os.status}
                         </span>
                       </div>
                       <h3 className="font-bold text-base mt-1">{os.cliente}</h3>
                       {os.tel && <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><Phone size={11} /> {os.tel}</p>}
-                      <p className="text-sm text-slate-300 mt-1">{os.desc}</p>
-                      {os.forma_pgto && (
-                        <p className="text-xs text-sky-400 mt-1 font-medium">Condição: {os.forma_pgto}</p>
-                      )}
+                      {os.endereco && <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><MapPin size={11} /> {os.endereco}</p>}
+                      <p className="text-sm text-slate-200 mt-1.5">{os.desc}</p>
+                      <div className="flex flex-wrap gap-2 mt-1.5">
+                        {os.forma_pgto && (
+                          <span className="text-[11px] text-amber-300 font-medium">💳 {os.forma_pgto}</span>
+                        )}
+                        {nomeFuncExibido && (
+                          <span className="text-[11px] text-sky-400 font-bold">🔧 Resp: {nomeFuncExibido}</span>
+                        )}
+                      </div>
                       {listaMat.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
                           {listaMat.map((m, i) => (
@@ -2268,10 +2435,10 @@ export default function App() {
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-base text-amber-400">R$ {Number(os.valor).toFixed(2)}</span>
                         <button
-                          onClick={() => prepararEnvioParaFuncionario('os', os)}
-                          className="bg-sky-950 hover:bg-sky-900 border border-sky-700 text-sky-300 text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1"
+                          onClick={() => enviarDiretoParaFuncionario('os', os)}
+                          className="bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow"
                         >
-                          <Send size={12} /> Enviar p/ Funcionário
+                          <Send size={13} /> Enviar p/ {nomeFuncExibido || 'Funcionário'}
                         </button>
                       </div>
 
@@ -2294,7 +2461,7 @@ export default function App() {
                         ) : (
                           <button
                             onClick={() => setComprovanteAtivo({
-                              origem: `OS #${os.id.toString().slice(-4)}`,
+                              origem: `OS N° ${os.id.toString().slice(-4)}`,
                               cliente: os.cliente,
                               tel: os.tel || '',
                               itensTexto: `- ${os.desc}`,
@@ -2445,17 +2612,36 @@ export default function App() {
                 )}
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-lg text-xs sm:text-sm">
-                  Salvar Socorro na Agenda
-                </button>
-                <button
-                  type="button"
-                  onClick={() => criarAgendamento(null, true)}
-                  className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5"
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <select
+                  value={novoAgendamento.funcionario_id}
+                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, funcionario_id: e.target.value })}
+                  className="bg-slate-950 border border-sky-800 rounded-lg px-3 py-2.5 text-xs text-sky-300 font-bold"
                 >
-                  <Send size={15} /> Salvar & Enviar p/ Funcionário
-                </button>
+                  <option value="">
+                    {funcionarioPadraoUnidade
+                      ? `Funcionário: ${funcionarioPadraoUnidade.nome} (Padrão)`
+                      : 'Sem funcionário selecionado'}
+                  </option>
+                  {funcionarios.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      Funcionário: {f.nome} ({f.unidade.toUpperCase()})
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex flex-wrap gap-2">
+                  <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-lg text-xs sm:text-sm">
+                    Salvar Socorro na Agenda
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => criarAgendamento(null, true)}
+                    className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5"
+                  >
+                    <Send size={15} /> Salvar & Enviar p/ Funcionário
+                  </button>
+                </div>
               </div>
             </form>
 
@@ -2463,6 +2649,8 @@ export default function App() {
               {agendaUnidade.map((ag) => {
                 const totalSoc = Number(ag.valor_estimado || 0) + Number(ag.taxa_deslocamento || 0);
                 const listaMat = Array.isArray(ag.itens_usados) ? ag.itens_usados : [];
+                const nomeFuncSoc = ag.funcionario_nome || funcionarioPadraoUnidade?.nome || '';
+
                 return (
                   <div key={ag.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="space-y-1">
@@ -2471,6 +2659,9 @@ export default function App() {
                       <p className="text-xs text-slate-400 flex items-center gap-1">
                         <MapPin size={13} /> {ag.endereco} {ag.tel ? `• WhatsApp: ${ag.tel}` : ''}
                       </p>
+                      {nomeFuncSoc && (
+                        <span className="text-[11px] text-sky-400 font-bold block">🔧 Resp: {nomeFuncSoc}</span>
+                      )}
                       {listaMat.length > 0 && (
                         <div className="flex flex-wrap gap-1 pt-1">
                           {listaMat.map((m, i) => (
@@ -2485,10 +2676,10 @@ export default function App() {
                       <span className="font-bold text-base text-emerald-400">R$ {totalSoc.toFixed(2)}</span>
                       <div className="flex flex-wrap items-center gap-1.5">
                         <button
-                          onClick={() => prepararEnvioParaFuncionario('socorro', ag)}
-                          className="bg-sky-950 hover:bg-sky-900 border border-sky-700 text-sky-300 text-xs font-bold px-2.5 py-2 rounded-lg flex items-center gap-1"
+                          onClick={() => enviarDiretoParaFuncionario('socorro', ag)}
+                          className="bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1"
                         >
-                          <Send size={12} /> p/ Funcionário
+                          <Send size={12} /> Enviar p/ {nomeFuncSoc || 'Funcionário'}
                         </button>
                         {ag.status !== 'concluido' ? (
                           <button
@@ -2503,7 +2694,7 @@ export default function App() {
                               origem: `Socorro (${ag.cliente})`,
                               cliente: ag.cliente,
                               tel: ag.tel || '',
-                              itensTexto: `- Socorro: ${ag.servico}%0A- Local: ${ag.endereco}`,
+                              itensTexto: `- Socorro: ${ag.servico}\n- Local: ${ag.endereco}`,
                               total: totalSoc,
                               forma: 'Pix',
                               garantia: '90 dias',
@@ -2643,7 +2834,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* FILA DE ORÇAMENTOS EM STANDBY (AGUARDANDO RESPOSTA DO CLIENTE) */}
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-bold text-amber-400 flex items-center gap-2">
