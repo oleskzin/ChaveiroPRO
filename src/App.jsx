@@ -102,6 +102,8 @@ export default function App() {
   const [descontoPdv, setDescontoPdv] = useState('');
   const [servicoAvulsoDesc, setServicoAvulsoDesc] = useState('');
   const [servicoAvulsoValor, setServicoAvulsoValor] = useState('');
+  const [gerenciandoServicosPdv, setGerenciandoServicosPdv] = useState(false);
+  const [servicoRapidoForm, setServicoRapidoForm] = useState({ id: null, nome: '', valor: '' });
   const [formaPgto, setFormaPgto] = useState('Pix');
   const [taxaCartaoIdPdv, setTaxaCartaoIdPdv] = useState('');
   const [clientePdv, setClientePdv] = useState({ nome: '', tel: '', obs: '' });
@@ -224,7 +226,7 @@ export default function App() {
   useEffect(() => {
     carregarDados();
     const canal = supabase
-      .channel('sincronizacao_luisinho_v30')
+      .channel('sincronizacao_luisinho_v31')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
         carregarDados();
       })
@@ -487,6 +489,31 @@ export default function App() {
       setServicoAvulsoValor('');
     }
     mostrarToast(`Serviço "${descFinal}" incluído`);
+  };
+
+  const salvarServicoRapidoPdv = async (e) => {
+    e.preventDefault();
+    if (!servicoRapidoForm.nome.trim() || servicoRapidoForm.valor === '') {
+      mostrarToast('Preencha o nome e o valor do serviço.', 'erro');
+      return;
+    }
+    const item = {
+      id: servicoRapidoForm.id || Date.now(),
+      grupo: 'servico',
+      nome: servicoRapidoForm.nome.trim(),
+      marca: 'Geral',
+      tipo_valor: 'fixo',
+      valor: Number(servicoRapidoForm.valor)
+    };
+    const { error } = await supabase.from('tabela_precos').upsert([item]);
+    if (error) {
+      mostrarToast('Erro ao salvar serviço: ' + error.message, 'erro');
+      return;
+    }
+    const eraEdicao = Boolean(servicoRapidoForm.id);
+    setServicoRapidoForm({ id: null, nome: '', valor: '' });
+    mostrarToast(eraEdicao ? 'Serviço rápido atualizado!' : 'Novo serviço rápido salvo!');
+    carregarDados();
   };
 
   const alterarPrecoItemCarrinho = (idx, novoPreco) => {
@@ -1528,7 +1555,7 @@ export default function App() {
     { id: 'clientes', label: 'Clientes', icon: Users },
   ];
 
-  // Bloco reutilizável da Comanda do PDV (usado na lateral do PC e na gaveta flutuante do Celular)
+  // Bloco reutilizável da Comanda do PDV
   const renderComandaPDV = () => (
     <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4">
       <div className="space-y-3">
@@ -1718,7 +1745,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <h1 className={`font-bold text-base sm:text-lg leading-tight ${temaUnidade.textoDestaque}`}>Luisinho Chaveiro</h1>
                 <span className={`text-[10px] border px-1.5 py-0.5 rounded font-mono ${temaUnidade.badge}`}>
-                  v3.0
+                  v3.1
                 </span>
               </div>
               {erroConexao ? (
@@ -2049,7 +2076,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 1: PDV / BALCÃO COM COMANDA FLUTUANTE NO CELULAR ================= */}
+        {/* ================= ABA 1: PDV / BALCÃO COM SERVIÇOS RÁPIDOS EDITÁVEIS E COMANDA FLUTUANTE ================= */}
         {abaAtiva === 'pdv' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 space-y-4">
@@ -2058,7 +2085,6 @@ export default function App() {
                   <Search size={18} /> Selecionar Chave / Produto ({infoUnidadeAtual.nome})
                 </h2>
 
-                {/* Busca com botão X para limpar com 1 toque */}
                 <div className="relative mb-3">
                   <input
                     ref={inputBuscaPdvRef}
@@ -2103,24 +2129,132 @@ export default function App() {
                 </div>
               </div>
 
+              {/* SERVIÇOS RÁPIDOS (AGORA 100% EDITÁVEL DIRETO NO PDV) + MÃO DE OBRA AVULSA */}
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-                <h3 className="font-bold text-sm text-slate-300">Serviços Rápidos da Tabela ou Mão de Obra Avulsa</h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {listaServicosBase.slice(0, 6).map((srv) => (
-                    <button
-                      key={srv.id}
-                      type="button"
-                      onClick={() => adicionarServicoAvulsoPdv(srv.nome, srv.valor)}
-                      className="bg-slate-950 hover:bg-slate-800 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-amber-300 font-medium"
-                    >
-                      + {srv.nome} (R$ {srv.valor})
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-bold text-sm text-slate-200">
+                    Serviços Rápidos da Tabela ou Mão de Obra Avulsa
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGerenciandoServicosPdv(!gerenciandoServicosPdv);
+                      setServicoRapidoForm({ id: null, nome: '', valor: '' });
+                    }}
+                    className={`text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 border transition ${
+                      gerenciandoServicosPdv
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-500'
+                        : 'bg-slate-950 text-amber-400 border-slate-700 hover:bg-slate-800'
+                    }`}
+                  >
+                    {gerenciandoServicosPdv ? (
+                      <><Check size={13} /> Concluir Edição</>
+                    ) : (
+                      <><Edit2 size={13} /> Editar Lista</>
+                    )}
+                  </button>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+
+                {gerenciandoServicosPdv ? (
+                  <div className="space-y-3 bg-slate-950 p-3 rounded-xl border border-amber-500/40">
+                    <form onSubmit={salvarServicoRapidoPdv} className="space-y-2">
+                      <span className="text-[11px] font-bold uppercase text-amber-400 block">
+                        {servicoRapidoForm.id ? 'Alterando serviço selecionado:' : 'Adicionar novo serviço rápido:'}
+                      </span>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          placeholder="Nome do serviço (Ex: Abertura Residencial)"
+                          required
+                          value={servicoRapidoForm.nome}
+                          onChange={(e) => setServicoRapidoForm({ ...servicoRapidoForm, nome: e.target.value })}
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs sm:text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Preço R$"
+                            required
+                            value={servicoRapidoForm.valor}
+                            onChange={(e) => setServicoRapidoForm({ ...servicoRapidoForm, valor: e.target.value })}
+                            className="w-28 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs sm:text-sm"
+                          />
+                          <button
+                            type="submit"
+                            className={`${temaUnidade.botaoAtivo} font-bold px-3.5 py-2 rounded-lg text-xs whitespace-nowrap`}
+                          >
+                            {servicoRapidoForm.id ? 'Atualizar' : '+ Salvar'}
+                          </button>
+                          {servicoRapidoForm.id && (
+                            <button
+                              type="button"
+                              onClick={() => setServicoRapidoForm({ id: null, nome: '', valor: '' })}
+                              className="bg-slate-800 text-slate-300 px-2.5 py-2 rounded-lg text-xs"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </form>
+
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pt-1 border-t border-slate-800">
+                      {listaServicosBase.length === 0 ? (
+                        <p className="text-xs text-slate-500 py-2">Nenhum serviço rápido cadastrado ainda.</p>
+                      ) : (
+                        listaServicosBase.map((srv) => (
+                          <div key={srv.id} className="bg-slate-900 px-3 py-2 rounded-lg border border-slate-800 flex items-center justify-between gap-2 text-xs">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-200 truncate">{srv.nome}</p>
+                              <span className="text-emerald-400 font-bold">R$ {Number(srv.valor).toFixed(2)}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setServicoRapidoForm({ id: srv.id, nome: srv.nome, valor: srv.valor })}
+                                className="bg-slate-950 text-amber-400 p-1.5 rounded-lg border border-slate-700"
+                                title="Editar preço ou nome"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => excluirItemTabelaPrecos(srv.id)}
+                                className="bg-slate-950 text-red-400 p-1.5 rounded-lg border border-slate-700"
+                                title="Excluir serviço"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {listaServicosBase.length === 0 ? (
+                      <p className="text-xs text-slate-500">Toque em "Editar Lista" para cadastrar seus serviços rápidos.</p>
+                    ) : (
+                      listaServicosBase.map((srv) => (
+                        <button
+                          key={srv.id}
+                          type="button"
+                          onClick={() => adicionarServicoAvulsoPdv(srv.nome, srv.valor)}
+                          className="bg-slate-950 hover:bg-slate-800 active:scale-[0.98] border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-amber-300 font-medium transition"
+                        >
+                          + {srv.nome} (R$ {Number(srv.valor).toFixed(2)})
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-800/80">
                   <input
                     type="text"
-                    placeholder="Descrição do serviço avulso..."
+                    placeholder="Descrição do serviço avulso (só para esta venda)..."
                     value={servicoAvulsoDesc}
                     onChange={(e) => setServicoAvulsoDesc(e.target.value)}
                     className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
@@ -2150,7 +2284,7 @@ export default function App() {
               {renderComandaPDV()}
             </div>
 
-            {/* Barra Flutuante Estilo Delivery no Celular (logo acima do menu inferior) */}
+            {/* Barra Flutuante Estilo Delivery no Celular */}
             {carrinho.length > 0 && !comandaMobileAberta && (
               <div className="lg:hidden fixed bottom-[60px] left-3 right-3 z-40">
                 <button
@@ -2484,7 +2618,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 3: ORDENS DE SERVIÇO (FORMULÁRIO COLAPSÁVEL) ================= */}
+        {/* ================= ABA 3: ORDENS DE SERVIÇO ================= */}
         {abaAtiva === 'os' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2779,7 +2913,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 4: AGENDA DE SOCORROS (FORMULÁRIO COLAPSÁVEL) ================= */}
+        {/* ================= ABA 4: AGENDA DE SOCORROS ================= */}
         {abaAtiva === 'agenda' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3019,7 +3153,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 5: ORÇAMENTOS (FORMULÁRIO COLAPSÁVEL + STANDBY) ================= */}
+        {/* ================= ABA 5: ORÇAMENTOS ================= */}
         {abaAtiva === 'orcamento' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3285,7 +3419,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 6: CAIXA & AGENDA DE BOLETOS (FORMULÁRIOS COLAPSÁVEIS) ================= */}
+        {/* ================= ABA 6: CAIXA & AGENDA DE BOLETOS ================= */}
         {abaAtiva === 'caixa' && (
           <div className="space-y-5">
             <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2">
@@ -3594,7 +3728,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 7: ESTOQUE (FORMULÁRIO COLAPSÁVEL + BUSCA COM X) ================= */}
+        {/* ================= ABA 7: ESTOQUE ================= */}
         {abaAtiva === 'estoque' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3791,7 +3925,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 8: CRM DE CLIENTES (FORMULÁRIO COLAPSÁVEL + BUSCA COM X) ================= */}
+        {/* ================= ABA 8: CRM DE CLIENTES ================= */}
         {abaAtiva === 'clientes' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
