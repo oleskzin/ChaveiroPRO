@@ -6,7 +6,8 @@ import {
   MapPin, RefreshCw, ShoppingCart, ArrowUpCircle, ArrowDownCircle, 
   Share2, AlertCircle, X, Check, AlertTriangle, Filter, LayoutDashboard,
   Download, ShieldCheck, Zap, Clock, Award, Calculator, Building2, Settings,
-  CreditCard, UserCheck, Send, FolderClock, UserPlus, ChevronUp, ExternalLink, Receipt
+  CreditCard, UserCheck, Send, FolderClock, UserPlus, ChevronUp, ExternalLink, Receipt,
+  Lock, ClipboardCheck, Copy
 } from 'lucide-react';
 
 export default function App() {
@@ -155,11 +156,21 @@ export default function App() {
   const [buscaClienteCrm, setBuscaClienteCrm] = useState('');
   const [clienteHistoricoSelecionado, setClienteHistoricoSelecionado] = useState(null);
 
-  // ================= ESTADOS DO CAIXA E BOLETOS =================
-  const [novaTransacao, setNovaTransacao] = useState({ tipo: 'saida', desc: '', valor: '', forma: 'Pix' });
+  // ================= ESTADOS DO CAIXA, TROCO E FECHAMENTO DIÁRIO =================
+  const [novaTransacao, setNovaTransacao] = useState({ tipo: 'saida', origem_caixa: 'faturado', desc: '', valor: '', forma: 'Dinheiro' });
   const [transacaoEditando, setTransacaoEditando] = useState(null);
   const [novaConta, setNovaConta] = useState({ desc: '', valor: '', vencimento: '' });
   const [filtroPeriodoCaixa, setFiltroPeriodoCaixa] = useState('hoje');
+  const [modalFechamentoCaixa, setModalFechamentoCaixa] = useState(false);
+  const [dinheiroContadoFechamento, setDinheiroContadoFechamento] = useState('');
+  const [obsFechamento, setObsFechamento] = useState('');
+  const [historicoFechamentos, setHistoricoFechamentos] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('luisinho_fechamentos_caixa') || '[]');
+    } catch {
+      return [];
+    }
+  });
 
   // ================= ESTADOS DO ORÇAMENTO =================
   const [orcamento, setOrcamento] = useState({
@@ -178,10 +189,16 @@ export default function App() {
   const infoUnidadeAtual = unidadesConfig.find((u) => u.id === unidadeOperacional) || unidadesConfig[0];
   const funcionarioPadraoUnidade = funcionarios.find((f) => f.unidade === unidadeOperacional) || funcionarios[0] || null;
 
-  // Fundo de troco da unidade selecionada (ou soma dos 2 pontos se estiver em 'todas')
-  const fundoTrocoAtual = unidadeAtiva === 'todas'
+  // Fundo de troco base da unidade selecionada
+  const fundoTrocoBase = unidadeAtiva === 'todas'
     ? unidadesConfig.reduce((acc, u) => acc + Number(u.fundo_troco ?? 200), 0)
     : Number(infoUnidadeAtual?.fundo_troco ?? 200);
+
+  // Helper para identificar se uma transação pertence ao Caixa de Troco ou ao Faturado
+  const isMovimentacaoTroco = (t) => {
+    if (t.origem_caixa === 'troco') return true;
+    return (t.desc || '').startsWith('[TROCO]');
+  };
 
   // Carregar dados do Supabase
   const carregarDados = async () => {
@@ -252,7 +269,7 @@ export default function App() {
   useEffect(() => {
     carregarDados();
     const canal = supabase
-      .channel('sincronizacao_luisinho_v32')
+      .channel('sincronizacao_luisinho_v33')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
         carregarDados();
       })
@@ -276,6 +293,7 @@ export default function App() {
       } else if (e.key === 'Escape') {
         setTransacaoEditando(null);
         setComandaMobileAberta(false);
+        setModalFechamentoCaixa(false);
         cancelarEdicaoEstoque();
       }
     };
@@ -611,6 +629,7 @@ export default function App() {
     const novaTrans = {
       id: Date.now(),
       tipo: 'entrada',
+      origem_caixa: 'faturado',
       desc: `PDV${prefixoCliente}: ${resumoDesc}${clientePdv.obs ? ` [${clientePdv.obs}]` : ''}`,
       valor: totalLiquidoPdv,
       custo_insumo: custoTotalComTaxa,
@@ -623,9 +642,13 @@ export default function App() {
     setTransacoes((prev) => [novaTrans, ...prev]);
     const { error } = await supabase.from('transacoes').insert([novaTrans]);
     if (error) {
-      mostrarToast('Erro ao salvar venda: ' + error.message, 'erro');
-      setLoading(false);
-      return;
+      const { origem_caixa, ...transBasica } = novaTrans;
+      const resFallback = await supabase.from('transacoes').insert([transBasica]);
+      if (resFallback.error) {
+        mostrarToast('Erro ao salvar venda: ' + resFallback.error.message, 'erro');
+        setLoading(false);
+        return;
+      }
     }
 
     for (const item of carrinho) {
@@ -1019,6 +1042,7 @@ export default function App() {
     const novaTrans = {
       id: Date.now(),
       tipo: 'entrada',
+      origem_caixa: 'faturado',
       desc: `OS Nº ${os.id.toString().slice(-4)} (${os.cliente}): ${os.desc}${textoMateriais}`,
       valor: Number(os.valor),
       custo_insumo: Number(os.custo_insumo || 0),
@@ -1027,7 +1051,11 @@ export default function App() {
       timestamp: Date.now(),
       unidade: os.unidade || unidadeOperacional
     };
-    await supabase.from('transacoes').insert([novaTrans]);
+    const resTrans = await supabase.from('transacoes').insert([novaTrans]);
+    if (resTrans.error) {
+      const { origem_caixa, ...transBasica } = novaTrans;
+      await supabase.from('transacoes').insert([transBasica]);
+    }
 
     for (const mat of listaMat) {
       const chaveUsada = estoque.find((c) => c.id === mat.id);
@@ -1156,6 +1184,7 @@ export default function App() {
     const novaTrans = {
       id: Date.now(),
       tipo: 'entrada',
+      origem_caixa: 'faturado',
       desc: `Socorro (${ag.cliente}): ${ag.servico} - End: ${ag.endereco}`,
       valor: valorTotalSocorro,
       custo_insumo: Number(ag.custo_insumo || 0),
@@ -1164,7 +1193,11 @@ export default function App() {
       timestamp: Date.now(),
       unidade: ag.unidade || unidadeOperacional
     };
-    await supabase.from('transacoes').insert([novaTrans]);
+    const resTrans = await supabase.from('transacoes').insert([novaTrans]);
+    if (resTrans.error) {
+      const { origem_caixa, ...transBasica } = novaTrans;
+      await supabase.from('transacoes').insert([transBasica]);
+    }
 
     for (const mat of listaMat) {
       const chaveUsada = estoque.find((c) => c.id === mat.id);
@@ -1257,19 +1290,23 @@ export default function App() {
     if (clienteHistoricoSelecionado?.id === id) setClienteHistoricoSelecionado(null);
     mostrarToast('Cliente removido.');
     carregarDados();
-  };
-
-  // ================= FUNÇÕES DO CAIXA E BOLETOS =================
+  };// ================= FUNÇÕES DO CAIXA, TROCO & FECHAMENTO DIÁRIO =================
   const adicionarTransacaoManual = async (e) => {
     e.preventDefault();
     if (!novaTransacao.desc || !novaTransacao.valor) return;
+
+    const ehTroco = novaTransacao.origem_caixa === 'troco';
+    const descLimpa = novaTransacao.desc.replace(/^\[TROCO\]\s*/i, '').trim();
+    const descFinal = ehTroco ? `[TROCO] ${descLimpa}` : descLimpa;
+
     const itemTrans = {
       id: Date.now(),
       tipo: novaTransacao.tipo,
-      desc: novaTransacao.desc,
+      origem_caixa: novaTransacao.origem_caixa,
+      desc: descFinal,
       valor: Number(novaTransacao.valor),
       custo_insumo: 0,
-      forma: novaTransacao.forma,
+      forma: ehTroco ? 'Dinheiro' : novaTransacao.forma,
       data: new Date().toLocaleDateString('pt-BR'),
       timestamp: Date.now(),
       unidade: unidadeOperacional
@@ -1277,28 +1314,82 @@ export default function App() {
 
     const { error } = await supabase.from('transacoes').insert([itemTrans]);
     if (error) {
-      mostrarToast('Erro ao lançar no caixa: ' + error.message, 'erro');
-      return;
+      const { origem_caixa, ...transBasica } = itemTrans;
+      const resFallback = await supabase.from('transacoes').insert([transBasica]);
+      if (resFallback.error) {
+        mostrarToast('Erro ao lançar no caixa: ' + resFallback.error.message, 'erro');
+        return;
+      }
     }
-    setNovaTransacao({ tipo: 'saida', desc: '', valor: '', forma: 'Pix' });
+    setNovaTransacao({ tipo: 'saida', origem_caixa: 'faturado', desc: '', valor: '', forma: 'Dinheiro' });
     toggleForm('caixa', false);
-    mostrarToast('Lançamento registrado no caixa!');
+    mostrarToast(ehTroco ? 'Movimentação registrada no Caixa de Troco!' : 'Lançamento registrado no Faturado!');
+    carregarDados();
+  };
+
+  const reporTrocoAutomatico = async (valorFaltante) => {
+    if (valorFaltante <= 0) return;
+    if (!window.confirm(`Deseja repor R$ ${valorFaltante.toFixed(2)} para o Caixa de Troco (abatendo R$ ${valorFaltante.toFixed(2)} do dinheiro faturado)?`)) return;
+
+    const agora = Date.now();
+    const saidaFaturado = {
+      id: agora,
+      tipo: 'saida',
+      origem_caixa: 'faturado',
+      desc: 'Transferência para recompor Caixa de Troco',
+      valor: Number(valorFaltante.toFixed(2)),
+      custo_insumo: 0,
+      forma: 'Dinheiro',
+      data: new Date().toLocaleDateString('pt-BR'),
+      timestamp: agora,
+      unidade: unidadeOperacional
+    };
+    const entradaTroco = {
+      id: agora + 1,
+      tipo: 'entrada',
+      origem_caixa: 'troco',
+      desc: '[TROCO] Reposição do fundo de troco',
+      valor: Number(valorFaltante.toFixed(2)),
+      custo_insumo: 0,
+      forma: 'Dinheiro',
+      data: new Date().toLocaleDateString('pt-BR'),
+      timestamp: agora + 1,
+      unidade: unidadeOperacional
+    };
+
+    const { error } = await supabase.from('transacoes').insert([saidaFaturado, entradaTroco]);
+    if (error) {
+      const { origem_caixa: o1, ...b1 } = saidaFaturado;
+      const { origem_caixa: o2, ...b2 } = entradaTroco;
+      await supabase.from('transacoes').insert([b1, b2]);
+    }
+    mostrarToast(`Troco recomposto (+R$ ${valorFaltante.toFixed(2)})!`);
     carregarDados();
   };
 
   const salvarEdicaoTransacao = async () => {
     if (!transacaoEditando || !transacaoEditando.desc || transacaoEditando.valor === '') return;
+
+    const ehTroco = transacaoEditando.origem_caixa === 'troco';
+    const descLimpa = transacaoEditando.desc.replace(/^\[TROCO\]\s*/i, '').trim();
+    const descFinal = ehTroco ? `[TROCO] ${descLimpa}` : descLimpa;
+
     const atualizada = {
       tipo: transacaoEditando.tipo,
-      desc: transacaoEditando.desc,
+      origem_caixa: transacaoEditando.origem_caixa || 'faturado',
+      desc: descFinal,
       valor: Number(transacaoEditando.valor),
-      forma: transacaoEditando.forma
+      forma: ehTroco ? 'Dinheiro' : transacaoEditando.forma
     };
 
     const { error } = await supabase.from('transacoes').update(atualizada).eq('id', transacaoEditando.id);
     if (error) {
-      mostrarToast('Erro ao editar movimentação.', 'erro');
-      return;
+      const { origem_caixa, ...basica } = atualizada;
+      const resFallback = await supabase.from('transacoes').update(basica).eq('id', transacaoEditando.id);
+      if (resFallback.error) {
+        mostrarToast('Erro ao editar movimentação.', 'erro');
+        return;
+      }
     }
     setTransacaoEditando(null);
     mostrarToast('Movimentação atualizada!');
@@ -1348,6 +1439,7 @@ export default function App() {
       const novaTrans = {
         id: Date.now(),
         tipo: 'saida',
+        origem_caixa: 'faturado',
         desc: `Pagamento Boleto/Conta: ${conta.desc}`,
         valor: Number(conta.valor),
         custo_insumo: 0,
@@ -1356,7 +1448,11 @@ export default function App() {
         timestamp: Date.now(),
         unidade: conta.unidade || unidadeOperacional
       };
-      await supabase.from('transacoes').insert([novaTrans]);
+      const res = await supabase.from('transacoes').insert([novaTrans]);
+      if (res.error) {
+        const { origem_caixa, ...basica } = novaTrans;
+        await supabase.from('transacoes').insert([basica]);
+      }
       mostrarToast('Boleto pago e debitado do caixa!');
     } else {
       mostrarToast('Boleto quitado na agenda (sem mexer no caixa)!');
@@ -1378,9 +1474,9 @@ export default function App() {
   };
 
   const exportarCSVRelatorio = () => {
-    const cabecalho = 'Unidade;Data;Tipo;Descricao;Forma Pagamento;Valor (R$);Custo Insumo/Taxa (R$)\n';
+    const cabecalho = 'Unidade;Data;Caixa;Tipo;Descricao;Forma Pagamento;Valor (R$);Custo Insumo/Taxa (R$)\n';
     const linhas = transacoesFiltradas.map((t) =>
-      `${t.unidade || 'ponto1'};${t.data};${t.tipo.toUpperCase()};"${t.desc}";${t.forma};${Number(t.valor).toFixed(2).replace('.', ',')};${Number(t.custo_insumo || 0).toFixed(2).replace('.', ',')}`
+      `${t.unidade || 'ponto1'};${t.data};${isMovimentacaoTroco(t) ? 'TROCO' : 'FATURADO'};${t.tipo.toUpperCase()};"${t.desc}";${t.forma};${Number(t.valor).toFixed(2).replace('.', ',')};${Number(t.custo_insumo || 0).toFixed(2).replace('.', ',')}`
     ).join('\n');
     const blob = new Blob([cabecalho + linhas], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -1394,6 +1490,7 @@ export default function App() {
   const transacoesFiltradas = transacoesUnidade.filter((t) => {
     if (filtroPeriodoCaixa === 'todos') return true;
     if (filtroPeriodoCaixa === 'areceber') return t.forma === 'A Receber (Fiado)';
+    if (filtroPeriodoCaixa === 'troco') return isMovimentacaoTroco(t);
     const hoje = new Date();
     const hojeStr = hoje.toLocaleDateString('pt-BR');
 
@@ -1412,18 +1509,133 @@ export default function App() {
     return true;
   });
 
-  const totalEntradas = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && t.forma !== 'A Receber (Fiado)').reduce((acc, t) => acc + Number(t.valor), 0);
-  const totalAReceber = transacoesUnidade.filter((t) => t.tipo === 'entrada' && t.forma === 'A Receber (Fiado)').reduce((acc, t) => acc + Number(t.valor), 0);
-  const totalSaidas = transacoesFiltradas.filter((t) => t.tipo === 'saida').reduce((acc, t) => acc + Number(t.valor), 0);
-  const custoInsumosPeriodo = transacoesFiltradas.filter((t) => t.tipo === 'entrada').reduce((acc, t) => acc + Number(t.custo_insumo || 0), 0);
-  const saldoLiquido = totalEntradas - totalSaidas;
-  const lucroRealPeriodo = totalEntradas - totalSaidas - custoInsumosPeriodo;
+  // Separação matemática entre CAIXA DO FATURADO e CAIXA DE TROCO
+  const transacoesFaturado = transacoesFiltradas.filter((t) => !isMovimentacaoTroco(t));
+  const transacoesTroco = transacoesFiltradas.filter((t) => isMovimentacaoTroco(t));
 
-  const entradasPix = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && t.forma.includes('Pix')).reduce((acc, t) => acc + Number(t.valor), 0);
-  const entradasDinheiro = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && t.forma.includes('Dinheiro')).reduce((acc, t) => acc + Number(t.valor), 0);
-  const saidasDinheiro = transacoesFiltradas.filter((t) => t.tipo === 'saida' && t.forma.includes('Dinheiro')).reduce((acc, t) => acc + Number(t.valor), 0);
-  const totalGavetaFisica = fundoTrocoAtual + entradasDinheiro - saidasDinheiro;
-  const entradasCartao = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && t.forma.includes('Cartão')).reduce((acc, t) => acc + Number(t.valor), 0);
+  const totalEntradas = transacoesFaturado.filter((t) => t.tipo === 'entrada' && t.forma !== 'A Receber (Fiado)').reduce((acc, t) => acc + Number(t.valor), 0);
+  const totalAReceber = transacoesUnidade.filter((t) => !isMovimentacaoTroco(t) && t.tipo === 'entrada' && t.forma === 'A Receber (Fiado)').reduce((acc, t) => acc + Number(t.valor), 0);
+  const totalSaidasFaturado = transacoesFaturado.filter((t) => t.tipo === 'saida').reduce((acc, t) => acc + Number(t.valor), 0);
+  const custoInsumosPeriodo = transacoesFaturado.filter((t) => t.tipo === 'entrada').reduce((acc, t) => acc + Number(t.custo_insumo || 0), 0);
+  const saldoOperacionalFaturado = totalEntradas - totalSaidasFaturado;
+  const lucroRealPeriodo = totalEntradas - totalSaidasFaturado - custoInsumosPeriodo;
+
+  // Movimentações do Caixa de Troco (acumulado geral da unidade para refletir o saldo real atual do troco na gaveta)
+  const todasTransacoesTrocoUnidade = transacoesUnidade.filter((t) => isMovimentacaoTroco(t));
+  const entradasTrocoGeral = todasTransacoesTrocoUnidade.filter((t) => t.tipo === 'entrada').reduce((acc, t) => acc + Number(t.valor), 0);
+  const saidasTrocoGeral = todasTransacoesTrocoUnidade.filter((t) => t.tipo === 'saida').reduce((acc, t) => acc + Number(t.valor), 0);
+  const saldoTrocoAtual = fundoTrocoBase + entradasTrocoGeral - saidasTrocoGeral;
+  const diferencaReposicaoTroco = Math.max(0, fundoTrocoBase - saldoTrocoAtual);
+
+  // Movimentações do troco apenas no período filtrado (para o relatório diário)
+  const entradasTrocoPeriodo = transacoesTroco.filter((t) => t.tipo === 'entrada').reduce((acc, t) => acc + Number(t.valor), 0);
+  const saidasTrocoPeriodo = transacoesTroco.filter((t) => t.tipo === 'saida').reduce((acc, t) => acc + Number(t.valor), 0);
+
+  const entradasPix = transacoesFaturado.filter((t) => t.tipo === 'entrada' && t.forma.includes('Pix')).reduce((acc, t) => acc + Number(t.valor), 0);
+  const entradasDinheiro = transacoesFaturado.filter((t) => t.tipo === 'entrada' && t.forma.includes('Dinheiro')).reduce((acc, t) => acc + Number(t.valor), 0);
+  const saidasDinheiroFaturado = transacoesFaturado.filter((t) => t.tipo === 'saida' && t.forma.includes('Dinheiro')).reduce((acc, t) => acc + Number(t.valor), 0);
+  const liquidoDinheiroFaturado = entradasDinheiro - saidasDinheiroFaturado;
+  const totalGavetaFisica = saldoTrocoAtual + liquidoDinheiroFaturado;
+  const entradasCartao = transacoesFaturado.filter((t) => t.tipo === 'entrada' && t.forma.includes('Cartão')).reduce((acc, t) => acc + Number(t.valor), 0);
+
+  // ================= GERADOR DE RELATÓRIO DE FECHAMENTO DE CAIXA DIÁRIO =================
+  const hojeStr = new Date().toLocaleDateString('pt-BR');
+  const hojeISO = new Date().toISOString().split('T')[0];
+
+  const gerarTextoFechamentoDiario = () => {
+    const transHoje = transacoesUnidade.filter((t) => t.data === hojeStr);
+    const fatHoje = transHoje.filter((t) => !isMovimentacaoTroco(t));
+    const trocoHoje = transHoje.filter((t) => isMovimentacaoTroco(t));
+
+    const entHoje = fatHoje.filter((t) => t.tipo === 'entrada' && t.forma !== 'A Receber (Fiado)').reduce((acc, t) => acc + Number(t.valor), 0);
+    const pixHoje = fatHoje.filter((t) => t.tipo === 'entrada' && t.forma.includes('Pix')).reduce((acc, t) => acc + Number(t.valor), 0);
+    const dinHoje = fatHoje.filter((t) => t.tipo === 'entrada' && t.forma.includes('Dinheiro')).reduce((acc, t) => acc + Number(t.valor), 0);
+    const cartHoje = fatHoje.filter((t) => t.tipo === 'entrada' && t.forma.includes('Cartão')).reduce((acc, t) => acc + Number(t.valor), 0);
+    const fiadoHoje = fatHoje.filter((t) => t.tipo === 'entrada' && t.forma === 'A Receber (Fiado)').reduce((acc, t) => acc + Number(t.valor), 0);
+
+    const saidasFatHojeLista = fatHoje.filter((t) => t.tipo === 'saida');
+    const totalSaidasFatHoje = saidasFatHojeLista.reduce((acc, t) => acc + Number(t.valor), 0);
+    const saidasDinFatHoje = saidasFatHojeLista.filter((t) => t.forma.includes('Dinheiro')).reduce((acc, t) => acc + Number(t.valor), 0);
+
+    const movTrocoHojeLista = trocoHoje;
+    const sangriaTrocoHoje = trocoHoje.filter((t) => t.tipo === 'saida').reduce((acc, t) => acc + Number(t.valor), 0);
+    const repTrocoHoje = trocoHoje.filter((t) => t.tipo === 'entrada').reduce((acc, t) => acc + Number(t.valor), 0);
+
+    const gavetaEsperadaHoje = saldoTrocoAtual + (dinHoje - saidasDinFatHoje);
+    const contadoNum = dinheiroContadoFechamento !== '' ? Number(dinheiroContadoFechamento) : null;
+    const quebraCaixa = contadoNum !== null ? contadoNum - gavetaEsperadaHoje : null;
+
+    const detalhesSaidasFat = saidasFatHojeLista.length > 0
+      ? saidasFatHojeLista.map((s) => `- ${s.desc} (${s.forma}): -R$ ${Number(s.valor).toFixed(2)}`).join('\n')
+      : '- Nenhuma retirada do faturado';
+
+    const detalhesTroco = movTrocoHojeLista.length > 0
+      ? movTrocoHojeLista.map((m) => `- ${m.tipo === 'saida' ? 'Retirada' : 'Entrada'}: ${m.desc.replace(/^\[TROCO\]\s*/i, '')} (${m.tipo === 'saida' ? '-' : '+'}R$ ${Number(m.valor).toFixed(2)})`).join('\n')
+      : '- Nenhuma movimentacao no troco hoje';
+
+    const linhas = [
+      `*FECHAMENTO DE CAIXA DIARIO - LUISINHO CHAVEIRO*`,
+      `*Unidade:* ${unidadeAtiva === 'todas' ? 'Consolidado (2 Pontos)' : infoUnidadeAtual.nome}`,
+      `*Data:* ${hojeStr} as ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+      `==================================`,
+      `*1. FATURAMENTO DO DIA (VENDAS / OS):*`,
+      `- Pix: R$ ${pixHoje.toFixed(2)}`,
+      `- Dinheiro: R$ ${dinHoje.toFixed(2)}`,
+      `- Cartao: R$ ${cartHoje.toFixed(2)}`,
+      `*Total Recebido:* R$ ${entHoje.toFixed(2)}`,
+      fiadoHoje > 0 ? `- Fiado / A Receber hoje: R$ ${fiadoHoje.toFixed(2)}` : null,
+      `----------------------------------`,
+      `*2. RETIRADAS / DESPESAS DO FATURADO:*`,
+      detalhesSaidasFat,
+      `*Total Saidas Faturado:* -R$ ${totalSaidasFatHoje.toFixed(2)}`,
+      `*Saldo Operacional do Dia:* R$ ${(entHoje - totalSaidasFatHoje).toFixed(2)}`,
+      `----------------------------------`,
+      `*3. CAIXA DE TROCO (BASE R$ ${fundoTrocoBase.toFixed(2)}):*`,
+      detalhesTroco,
+      `- Retiradas do Troco hoje: -R$ ${sangriaTrocoHoje.toFixed(2)}`,
+      `- Reposicoes no Troco hoje: +R$ ${repTrocoHoje.toFixed(2)}`,
+      `*Saldo Atual do Troco:* R$ ${saldoTrocoAtual.toFixed(2)}`,
+      `----------------------------------`,
+      `*4. CONFERENCIA DA GAVETA FISICA:*`,
+      `- Troco Atual na Gaveta: R$ ${saldoTrocoAtual.toFixed(2)}`,
+      `- Dinheiro Liquido Vendas: R$ ${(dinHoje - saidasDinFatHoje).toFixed(2)}`,
+      `*Total Esperado na Gaveta:* R$ ${gavetaEsperadaHoje.toFixed(2)}`,
+      contadoNum !== null ? `*Dinheiro Contado:* R$ ${contadoNum.toFixed(2)}` : null,
+      quebraCaixa !== null ? `*Diferenca (Quebra/Sobra):* ${quebraCaixa >= 0 ? '+' : ''}R$ ${quebraCaixa.toFixed(2)}` : null,
+      obsFechamento ? `\n*Obs:* ${obsFechamento}` : null
+    ].filter(Boolean);
+
+    return linhas.join('\n');
+  };
+
+  const registrarESalvarFechamento = async (acao = 'salvar') => {
+    const relatorioTexto = gerarTextoFechamentoDiario();
+
+    const novoFechamento = {
+      id: Date.now(),
+      data: hojeStr,
+      hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      unidade: unidadeAtiva === 'todas' ? 'Todos os Pontos' : infoUnidadeAtual.nome,
+      texto: relatorioTexto
+    };
+
+    const listaAtualizada = [novoFechamento, ...historicoFechamentos].slice(0, 30);
+    setHistoricoFechamentos(listaAtualizada);
+    localStorage.setItem('luisinho_fechamentos_caixa', JSON.stringify(listaAtualizada));
+
+    if (acao === 'copiar') {
+      try {
+        await navigator.clipboard.writeText(relatorioTexto);
+        mostrarToast('Relatório de fechamento copiado!');
+      } catch {
+        mostrarToast('Fechamento salvo no histórico!');
+      }
+    } else if (acao === 'whatsapp') {
+      window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(relatorioTexto)}`, '_blank');
+    } else {
+      mostrarToast('Fechamento diário registrado no histórico!');
+    }
+  };
 
   // ================= FUNÇÕES DO ORÇAMENTO =================
   const adicionarLinhaOrcamento = () => {
@@ -1620,10 +1832,8 @@ export default function App() {
   };
 
   // ================= DADOS DO DASHBOARD =================
-  const hojeStr = new Date().toLocaleDateString('pt-BR');
-  const hojeISO = new Date().toISOString().split('T')[0];
   const faturamentoHoje = transacoesUnidade
-    .filter((t) => t.tipo === 'entrada' && t.data === hojeStr && t.forma !== 'A Receber (Fiado)')
+    .filter((t) => !isMovimentacaoTroco(t) && t.tipo === 'entrada' && t.data === hojeStr && t.forma !== 'A Receber (Fiado)')
     .reduce((acc, t) => acc + Number(t.valor), 0);
   const osPendentes = osUnidade.filter((o) => o.status !== 'concluida');
   const socorrosPendentes = agendaUnidade.filter((a) => a.status !== 'concluido');
@@ -1832,7 +2042,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <h1 className={`font-bold text-base sm:text-lg leading-tight ${temaUnidade.textoDestaque}`}>Luisinho Chaveiro</h1>
                 <span className={`text-[10px] border px-1.5 py-0.5 rounded font-mono ${temaUnidade.badge}`}>
-                  v3.2
+                  v3.3
                 </span>
               </div>
               {erroConexao ? (
@@ -2014,6 +2224,106 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL DE FECHAMENTO DE CAIXA DIÁRIO */}
+      {modalFechamentoCaixa && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 max-w-xl w-full space-y-4 my-8 shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-emerald-400 flex items-center gap-2 text-base">
+                <ClipboardCheck size={20} /> Fechamento de Caixa Diário ({hojeStr})
+              </h3>
+              <button type="button" onClick={() => setModalFechamentoCaixa(false)} className="text-slate-400 hover:text-white">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <div>
+                <label className="text-[11px] text-emerald-300 font-bold block mb-1">
+                  Conferência Física: Dinheiro Contado na Gaveta (R$)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder={`Esperado: R$ ${totalGavetaFisica.toFixed(2)}`}
+                  value={dinheiroContadoFechamento}
+                  onChange={(e) => setDinheiroContadoFechamento(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-bold"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-400 font-bold block mb-1">
+                  Observação do Fechamento (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Tudo batendo / Troco ok"
+                  value={obsFechamento}
+                  onChange={(e) => setObsFechamento(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </div>
+            </div>
+
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-64 overflow-y-auto">
+              <pre className="text-xs text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">
+                {gerarTextoFechamentoDiario()}
+              </pre>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => registrarESalvarFechamento('salvar')}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-slate-700"
+              >
+                <Lock size={14} /> Salvar no Histórico
+              </button>
+              <button
+                type="button"
+                onClick={() => registrarESalvarFechamento('copiar')}
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5"
+              >
+                <Copy size={14} /> Salvar & Copiar
+              </button>
+              <button
+                type="button"
+                onClick={() => registrarESalvarFechamento('whatsapp')}
+                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5"
+              >
+                <Share2 size={14} /> Enviar WhatsApp
+              </button>
+            </div>
+
+            {historicoFechamentos.length > 0 && (
+              <div className="border-t border-slate-800 pt-3 space-y-2">
+                <span className="text-[11px] font-bold uppercase text-slate-400 block">
+                  Últimos Fechamentos Salvos ({historicoFechamentos.length})
+                </span>
+                <div className="max-h-32 overflow-y-auto space-y-1.5">
+                  {historicoFechamentos.slice(0, 5).map((f) => (
+                    <div key={f.id} className="bg-slate-950 px-3 py-2 rounded-lg border border-slate-800 flex items-center justify-between text-xs">
+                      <span className="text-slate-300">
+                        <strong>{f.data}</strong> às {f.hora} • {f.unidade}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try { await navigator.clipboard.writeText(f.texto); mostrarToast('Relatório antigo copiado!'); } catch {}
+                        }}
+                        className="text-amber-400 hover:underline font-semibold"
+                      >
+                        Copiar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* BARRA DE NAVEGAÇÃO SUPERIOR */}
       <nav className="bg-slate-900 border-b border-slate-800 px-2 py-2 flex overflow-x-auto gap-1 sticky top-[57px] z-20 no-scrollbar">
         {abasMenu.map((aba) => {
@@ -2086,7 +2396,7 @@ export default function App() {
               <div onClick={() => setAbaAtiva('caixa')} className="cursor-pointer bg-slate-900 hover:border-emerald-500/50 transition p-3.5 rounded-xl border border-slate-800">
                 <span className="text-xs text-slate-400">Caixa Hoje ({unidadeAtiva === 'todas' ? '2 Pontos' : infoUnidadeAtual.nome.split(' ')[0]})</span>
                 <p className="text-xl sm:text-2xl font-bold text-emerald-400 mt-1">R$ {faturamentoHoje.toFixed(2)}</p>
-                <span className="text-[10px] text-slate-500">+ Troco fixo: R$ {fundoTrocoAtual.toFixed(2)}</span>
+                <span className="text-[10px] text-slate-400">Troco atual: R$ {saldoTrocoAtual.toFixed(2)}</span>
               </div>
 
               <div onClick={() => setAbaAtiva('os')} className="cursor-pointer bg-slate-900 hover:border-amber-500/50 transition p-3.5 rounded-xl border border-slate-800">
@@ -2109,7 +2419,7 @@ export default function App() {
               <h2 className={`font-bold text-sm mb-3 flex items-center gap-1.5 ${temaUnidade.textoDestaque}`}>
                 <Zap size={16} /> Atalhos Rápidos ({infoUnidadeAtual.nome})
               </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
                 <button onClick={() => setAbaAtiva('pdv')} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5">
                   <ShoppingCart size={16} /> Venda Balcão
                 </button>
@@ -2123,8 +2433,14 @@ export default function App() {
                   <FolderClock size={16} /> Orçamento
                 </button>
                 <button
+                  onClick={() => setModalFechamentoCaixa(true)}
+                  className="bg-teal-600 hover:bg-teal-500 text-white font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
+                >
+                  <ClipboardCheck size={16} /> Fechar Caixa
+                </button>
+                <button
                   onClick={() => abrirPortalNFSe()}
-                  className="col-span-2 sm:col-span-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
                 >
                   <Receipt size={16} /> Emitir NFS-e <ExternalLink size={12} />
                 </button>
@@ -3531,7 +3847,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 6: CAIXA (COM FUNDO DE TROCO FIXO) & AGENDA DE BOLETOS ================= */}
+        {/* ================= ABA 6: CAIXA (TROCO VS FATURADO + FECHAMENTO DIÁRIO) & BOLETOS ================= */}
         {abaAtiva === 'caixa' && (
           <div className="space-y-5">
             <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2">
@@ -3540,6 +3856,7 @@ export default function App() {
                   { id: 'hoje', label: 'Hoje' },
                   { id: '7dias', label: '7 Dias' },
                   { id: 'mes', label: 'Mês Atual' },
+                  { id: 'troco', label: 'Só Caixa Troco' },
                   { id: 'areceber', label: `Fiado (R$ ${totalAReceber.toFixed(0)})` },
                   { id: 'todos', label: 'Tudo' },
                 ].map((periodo) => (
@@ -3556,7 +3873,13 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setModalFechamentoCaixa(true)}
+                  className="bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 shadow"
+                >
+                  <ClipboardCheck size={14} /> Fechar Caixa do Dia
+                </button>
                 <button
                   onClick={() => abrirPortalNFSe()}
                   className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5"
@@ -3572,19 +3895,35 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            {/* ALERTA DE REPOSIÇÃO DO CAIXA DE TROCO SE ESTIVER ABAIXO DA BASE (R$ 200) */}
+            {diferencaReposicaoTroco > 0 && unidadeAtiva !== 'todas' && (
+              <div className="bg-amber-950/50 border border-amber-600/70 p-3 rounded-xl flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs text-amber-200">
+                  <strong>Caixa de Troco desfalcado:</strong> Saldo atual em <strong>R$ {saldoTrocoAtual.toFixed(2)}</strong> (Faltam <strong>R$ {diferencaReposicaoTroco.toFixed(2)}</strong> para completar a base de R$ {fundoTrocoBase.toFixed(2)}).
+                </div>
+                <button
+                  type="button"
+                  onClick={() => reporTrocoAutomatico(diferencaReposicaoTroco)}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-lg"
+                >
+                  Repor R$ {diferencaReposicaoTroco.toFixed(2)} do Faturado
+                </button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
               <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Entradas Brutas</span>
+                <span className="text-xs text-slate-400">Faturado Bruto</span>
                 <p className="text-lg sm:text-xl font-bold text-emerald-400 mt-1">R$ {totalEntradas.toFixed(2)}</p>
               </div>
               <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Saídas / Despesas</span>
-                <p className="text-lg sm:text-xl font-bold text-red-400 mt-1">R$ {totalSaidas.toFixed(2)}</p>
+                <span className="text-xs text-slate-400">Saídas Faturado</span>
+                <p className="text-lg sm:text-xl font-bold text-red-400 mt-1">R$ {totalSaidasFaturado.toFixed(2)}</p>
               </div>
               <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Saldo Operacional</span>
-                <p className={`text-lg sm:text-xl font-bold mt-1 ${saldoLiquido >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
-                  R$ {saldoLiquido.toFixed(2)}
+                <span className="text-xs text-slate-400">Saldo Faturado</span>
+                <p className={`text-lg sm:text-xl font-bold mt-1 ${saldoOperacionalFaturado >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                  R$ {saldoOperacionalFaturado.toFixed(2)}
                 </p>
               </div>
               <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
@@ -3592,32 +3931,39 @@ export default function App() {
                 <p className={`text-lg sm:text-xl font-bold mt-1 ${lucroRealPeriodo >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                   R$ {lucroRealPeriodo.toFixed(2)}
                 </p>
-                <span className="text-[10px] text-slate-500">Chaves + Taxas: R$ {custoInsumosPeriodo.toFixed(2)}</span>
+                <span className="text-[10px] text-slate-500">Insumos: R$ {custoInsumosPeriodo.toFixed(2)}</span>
               </div>
               <div
                 onClick={() => setModalConfigUnidades(true)}
-                className="col-span-2 lg:col-span-1 cursor-pointer bg-emerald-950/30 hover:border-emerald-500/60 transition p-3.5 rounded-xl border border-emerald-800/70"
-                title="Toque para ajustar o valor do Fundo de Troco"
+                className="cursor-pointer bg-sky-950/30 hover:border-sky-500/60 transition p-3.5 rounded-xl border border-sky-800/70"
+                title="Toque para configurar o valor base do Caixa de Troco"
               >
-                <span className="text-xs text-emerald-300 font-semibold flex items-center justify-between">
-                  Gaveta Física <Edit2 size={11} />
+                <span className="text-xs text-sky-300 font-semibold flex items-center justify-between">
+                  Caixa de Troco <Edit2 size={11} />
                 </span>
+                <p className={`text-lg sm:text-xl font-bold mt-1 ${saldoTrocoAtual < fundoTrocoBase ? 'text-amber-400' : 'text-sky-400'}`}>
+                  R$ {saldoTrocoAtual.toFixed(2)}
+                </p>
+                <span className="text-[10px] text-slate-400">Base: R$ {fundoTrocoBase.toFixed(0)}</span>
+              </div>
+              <div className="bg-emerald-950/30 p-3.5 rounded-xl border border-emerald-800/70">
+                <span className="text-xs text-emerald-300 font-semibold block">Gaveta Física</span>
                 <p className="text-lg sm:text-xl font-bold text-emerald-400 mt-1">R$ {totalGavetaFisica.toFixed(2)}</p>
-                <span className="text-[10px] text-slate-400">Troco R$ {fundoTrocoAtual.toFixed(0)} + Dinheiro</span>
+                <span className="text-[10px] text-slate-400">Troco + Dinheiro Vendas</span>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-800 text-xs">
               <div>
-                <span className="text-slate-400 block">Pix:</span>
+                <span className="text-slate-400 block">Pix (Faturado):</span>
                 <strong className="text-emerald-400">R$ {entradasPix.toFixed(2)}</strong>
               </div>
               <div>
-                <span className="text-slate-400 block">Dinheiro (Vendas):</span>
-                <strong className="text-amber-400">R$ {entradasDinheiro.toFixed(2)}</strong>
+                <span className="text-slate-400 block">Dinheiro (Faturado):</span>
+                <strong className="text-amber-400">R$ {liquidoDinheiroFaturado.toFixed(2)}</strong>
               </div>
               <div>
-                <span className="text-slate-400 block">Cartão:</span>
+                <span className="text-slate-400 block">Cartão (Faturado):</span>
                 <strong className="text-sky-400">R$ {entradasCartao.toFixed(2)}</strong>
               </div>
             </div>
@@ -3630,28 +3976,43 @@ export default function App() {
                     onClick={() => toggleForm('caixa')}
                     className={`${temaUnidade.botaoAtivo} text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1`}
                   >
-                    {formAberto.caixa ? <><X size={13} /> Fechar</> : <><Plus size={13} /> Lançar Avulso</>}
+                    {formAberto.caixa ? <><X size={13} /> Fechar</> : <><Plus size={13} /> Movimentar Caixa</>}
                   </button>
                 </div>
 
                 {formAberto.caixa && (
-                  <form onSubmit={adicionarTransacaoManual} className="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-700">
-                    <div className="grid grid-cols-2 gap-2">
+                  <form onSubmit={adicionarTransacaoManual} className="space-y-2.5 bg-slate-950 p-3 rounded-xl border border-slate-700">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <select
+                        value={novaTransacao.origem_caixa}
+                        onChange={(e) => setNovaTransacao({
+                          ...novaTransacao,
+                          origem_caixa: e.target.value,
+                          forma: e.target.value === 'troco' ? 'Dinheiro' : novaTransacao.forma
+                        })}
+                        className="bg-slate-900 border border-sky-700 rounded-lg px-3 py-2 text-xs font-bold text-sky-300"
+                      >
+                        <option value="faturado">Caixa: Faturado (Vendas)</option>
+                        <option value="troco">Caixa: Troco (R$ {fundoTrocoBase})</option>
+                      </select>
+
                       <select
                         value={novaTransacao.tipo}
                         onChange={(e) => setNovaTransacao({ ...novaTransacao, tipo: e.target.value })}
                         className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs font-bold"
                       >
-                        <option value="saida">Saída / Despesa (-)</option>
-                        <option value="entrada">Entrada Avulsa (+)</option>
+                        <option value="saida">Retirada / Saída (-)</option>
+                        <option value="entrada">Entrada / Reposição (+)</option>
                       </select>
+
                       <select
-                        value={novaTransacao.forma}
+                        value={novaTransacao.origem_caixa === 'troco' ? 'Dinheiro' : novaTransacao.forma}
+                        disabled={novaTransacao.origem_caixa === 'troco'}
                         onChange={(e) => setNovaTransacao({ ...novaTransacao, forma: e.target.value })}
-                        className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                        className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs disabled:opacity-60"
                       >
-                        <option>Pix</option>
                         <option>Dinheiro</option>
+                        <option>Pix</option>
                         <option>Cartão de Débito</option>
                         <option>Cartão de Crédito</option>
                         <option>A Receber (Fiado)</option>
@@ -3660,7 +4021,7 @@ export default function App() {
                     <div className="flex flex-col sm:flex-row gap-2">
                       <input
                         type="text"
-                        placeholder="Descrição (Ex: Compra de chaves)"
+                        placeholder={novaTransacao.origem_caixa === 'troco' ? 'Motivo (Ex: Troco p/ cliente / Sangria troco)' : 'Descrição (Ex: Compra de chaves / Almoço)'}
                         required
                         value={novaTransacao.desc}
                         onChange={(e) => setNovaTransacao({ ...novaTransacao, desc: e.target.value })}
@@ -3685,95 +4046,124 @@ export default function App() {
                 )}
 
                 <div className="space-y-2.5 max-h-[460px] overflow-y-auto">
-                  {transacoesFiltradas.map((t) => (
-                    <div key={t.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs space-y-2">
-                      {transacaoEditando && transacaoEditando.id === t.id ? (
-                        <div className="space-y-2.5">
-                          <div className="grid grid-cols-2 gap-2">
-                            <select
-                              value={transacaoEditando.tipo}
-                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, tipo: e.target.value })}
-                              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs"
-                            >
-                              <option value="entrada">Entrada (+)</option>
-                              <option value="saida">Saída (-)</option>
-                            </select>
-                            <select
-                              value={transacaoEditando.forma}
-                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, forma: e.target.value })}
-                              className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs"
-                            >
-                              <option>Pix</option>
-                              <option>Dinheiro</option>
-                              <option>Cartão de Crédito</option>
-                              <option>Cartão de Débito</option>
-                              <option>Boleto</option>
-                              <option>A Receber (Fiado)</option>
-                            </select>
-                          </div>
-                          <input
-                            type="text"
-                            value={transacaoEditando.desc}
-                            onChange={(e) => setTransacaoEditando({ ...transacaoEditando, desc: e.target.value })}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm"
-                          />
-                          <div className="flex items-center justify-between gap-2">
+                  {transacoesFiltradas.map((t) => {
+                    const ehTrocoItem = isMovimentacaoTroco(t);
+                    return (
+                      <div key={t.id} className={`bg-slate-950 p-3 rounded-xl border text-xs space-y-2 ${ehTrocoItem ? 'border-sky-800/70' : 'border-slate-800'}`}>
+                        {transacaoEditando && transacaoEditando.id === t.id ? (
+                          <div className="space-y-2.5">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <select
+                                value={transacaoEditando.origem_caixa || (isMovimentacaoTroco(transacaoEditando) ? 'troco' : 'faturado')}
+                                onChange={(e) => setTransacaoEditando({
+                                  ...transacaoEditando,
+                                  origem_caixa: e.target.value,
+                                  forma: e.target.value === 'troco' ? 'Dinheiro' : transacaoEditando.forma
+                                })}
+                                className="bg-slate-900 border border-sky-700 rounded-lg px-2.5 py-2 text-xs text-sky-300 font-bold"
+                              >
+                                <option value="faturado">Caixa: Faturado</option>
+                                <option value="troco">Caixa: Troco</option>
+                              </select>
+                              <select
+                                value={transacaoEditando.tipo}
+                                onChange={(e) => setTransacaoEditando({ ...transacaoEditando, tipo: e.target.value })}
+                                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs"
+                              >
+                                <option value="entrada">Entrada (+)</option>
+                                <option value="saida">Saída (-)</option>
+                              </select>
+                              <select
+                                value={(transacaoEditando.origem_caixa === 'troco') ? 'Dinheiro' : transacaoEditando.forma}
+                                disabled={transacaoEditando.origem_caixa === 'troco'}
+                                onChange={(e) => setTransacaoEditando({ ...transacaoEditando, forma: e.target.value })}
+                                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs disabled:opacity-60"
+                              >
+                                <option>Pix</option>
+                                <option>Dinheiro</option>
+                                <option>Cartão de Crédito</option>
+                                <option>Cartão de Débito</option>
+                                <option>Boleto</option>
+                                <option>A Receber (Fiado)</option>
+                              </select>
+                            </div>
                             <input
-                              type="number"
-                              step="0.01"
-                              value={transacaoEditando.valor}
-                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, valor: e.target.value })}
-                              className="w-32 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-amber-400"
+                              type="text"
+                              value={transacaoEditando.desc.replace(/^\[TROCO\]\s*/i, '')}
+                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, desc: e.target.value })}
+                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm"
                             />
-                            <div className="flex gap-2">
-                              <button onClick={salvarEdicaoTransacao} className="bg-emerald-500 text-slate-950 font-bold px-3 py-2 rounded-lg flex items-center gap-1">
-                                <Check size={14} /> Salvar
-                              </button>
-                              <button onClick={() => setTransacaoEditando(null)} className="bg-slate-800 text-slate-300 px-3 py-2 rounded-lg flex items-center gap-1">
-                                <X size={14} /> Cancelar
-                              </button>
+                            <div className="flex items-center justify-between gap-2">
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={transacaoEditando.valor}
+                                onChange={(e) => setTransacaoEditando({ ...transacaoEditando, valor: e.target.value })}
+                                className="w-32 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-amber-400"
+                              />
+                              <div className="flex gap-2">
+                                <button onClick={salvarEdicaoTransacao} className="bg-emerald-500 text-slate-950 font-bold px-3 py-2 rounded-lg flex items-center gap-1">
+                                  <Check size={14} /> Salvar
+                                </button>
+                                <button onClick={() => setTransacaoEditando(null)} className="bg-slate-800 text-slate-300 px-3 py-2 rounded-lg flex items-center gap-1">
+                                  <X size={14} /> Cancelar
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div>
-                            <p className="font-semibold text-slate-100 text-sm leading-snug break-words">{t.desc}</p>
-                            <span className="text-slate-500 text-[11px] block mt-0.5">
-                              {t.data} • {t.forma} {unidadeAtiva === 'todas' ? `• ${(t.unidade || 'ponto1').toUpperCase()}` : ''}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-2">
-                            <span className={`text-sm font-bold ${t.tipo === 'entrada' ? (t.forma === 'A Receber (Fiado)' ? 'text-purple-400' : 'text-emerald-400') : 'text-red-400'}`}>
-                              {t.tipo === 'entrada' ? '+' : '-'} R$ {Number(t.valor).toFixed(2)}
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              {t.tipo === 'entrada' && (
+                        ) : (
+                          <>
+                            <div>
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${ehTrocoItem ? 'bg-sky-950 text-sky-300 border border-sky-700/60' : 'bg-slate-800 text-slate-300'}`}>
+                                  {ehTrocoItem ? 'Caixa Troco' : 'Faturado'}
+                                </span>
+                                <span className="text-slate-500 text-[11px]">
+                                  {t.data} • {t.forma} {unidadeAtiva === 'todas' ? `• ${(t.unidade || 'ponto1').toUpperCase()}` : ''}
+                                </span>
+                              </div>
+                              <p className="font-semibold text-slate-100 text-sm leading-snug break-words">
+                                {t.desc.replace(/^\[TROCO\]\s*/i, '')}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-2">
+                              <span className={`text-sm font-bold ${t.tipo === 'entrada' ? (t.forma === 'A Receber (Fiado)' ? 'text-purple-400' : 'text-emerald-400') : 'text-red-400'}`}>
+                                {t.tipo === 'entrada' ? '+' : '-'} R$ {Number(t.valor).toFixed(2)}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                {t.tipo === 'entrada' && !ehTrocoItem && (
+                                  <button
+                                    onClick={() => abrirPortalNFSe({ cliente: 'Cliente', desc: t.desc, valor: t.valor })}
+                                    className="bg-indigo-950 hover:bg-indigo-900 text-indigo-300 px-2 py-1.5 rounded-lg border border-indigo-800 flex items-center gap-1 text-[11px] font-semibold"
+                                    title="Copiar dados e abrir Portal NFS-e"
+                                  >
+                                    <Receipt size={12} /> NFS-e
+                                  </button>
+                                )}
+                                {t.forma === 'A Receber (Fiado)' && (
+                                  <button onClick={() => quitarPendenciaReceber(t)} className="bg-purple-600 hover:bg-purple-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold">
+                                    Receber
+                                  </button>
+                                )}
                                 <button
-                                  onClick={() => abrirPortalNFSe({ cliente: 'Cliente', desc: t.desc, valor: t.valor })}
-                                  className="bg-indigo-950 hover:bg-indigo-900 text-indigo-300 px-2 py-1.5 rounded-lg border border-indigo-800 flex items-center gap-1 text-[11px] font-semibold"
-                                  title="Copiar dados e abrir Portal NFS-e"
+                                  onClick={() => setTransacaoEditando({
+                                    ...t,
+                                    origem_caixa: isMovimentacaoTroco(t) ? 'troco' : 'faturado'
+                                  })}
+                                  className="bg-slate-900 text-amber-400 p-1.5 rounded-lg border border-slate-800"
                                 >
-                                  <Receipt size={12} /> NFS-e
+                                  <Edit2 size={13} />
                                 </button>
-                              )}
-                              {t.forma === 'A Receber (Fiado)' && (
-                                <button onClick={() => quitarPendenciaReceber(t)} className="bg-purple-600 hover:bg-purple-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold">
-                                  Receber
+                                <button onClick={() => excluirTransacao(t.id)} className="bg-slate-900 text-red-400 p-1.5 rounded-lg border border-slate-800">
+                                  <Trash2 size={13} />
                                 </button>
-                              )}
-                              <button onClick={() => setTransacaoEditando({ ...t })} className="bg-slate-900 text-amber-400 p-1.5 rounded-lg border border-slate-800">
-                                <Edit2 size={13} />
-                              </button>
-                              <button onClick={() => excluirTransacao(t.id)} className="bg-slate-900 text-red-400 p-1.5 rounded-lg border border-slate-800">
-                                <Trash2 size={13} />
-                              </button>
+                              </div>
                             </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
