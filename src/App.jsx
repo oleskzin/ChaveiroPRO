@@ -1,22 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabase';
+import { montarURLWhatsAppSeguro } from './utils/formatters';
 import { 
   Wrench, Package, DollarSign, Calendar, Users, FileText, 
   Plus, Trash2, Edit2, CheckCircle, Search, Phone, 
-  MapPin, RefreshCw, ShoppingCart, ArrowUpCircle, ArrowDownCircle, 
-  Share2, AlertCircle, X, Check, AlertTriangle, Filter, LayoutDashboard,
-  Download, ShieldCheck, Zap, Clock, Award, Calculator, Building2, Settings,
-  CreditCard, UserCheck, Send, FolderClock, UserPlus, ChevronUp, ExternalLink, Receipt,
-  Lock, ClipboardCheck, Copy
+  MapPin, RefreshCw, ShoppingCart, Share2, AlertCircle, X, Check, 
+  LayoutDashboard, Download, ShieldCheck, Zap, Clock, Award, Calculator, 
+  Settings, CreditCard, UserCheck, Send, FolderClock, UserPlus, ChevronUp, 
+  ExternalLink, Receipt, Lock, ClipboardCheck, Copy
 } from 'lucide-react';
 
 export default function App() {
   const [abaAtiva, setAbaAtiva] = useState('dashboard');
-  const [unidadeAtiva, setUnidadeAtiva] = useState('ponto1'); // 'ponto1', 'ponto2' ou 'todas'
+  const [unidadeAtiva, setUnidadeAtiva] = useState('ponto1');
   const [loading, setLoading] = useState(false);
   const [erroConexao, setErroConexao] = useState(null);
 
-  // ================= TOAST NOTIFICATIONS =================
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
   const mostrarToast = (mensagem, tipo = 'sucesso') => {
@@ -25,7 +24,6 @@ export default function App() {
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
   };
 
-  // ================= CONTROLE DE FORMULÁRIOS COLAPSÁVEIS & COMANDA MOBILE =================
   const [formAberto, setFormAberto] = useState({
     os: false,
     agenda: false,
@@ -41,7 +39,6 @@ export default function App() {
   };
   const [comandaMobileAberta, setComandaMobileAberta] = useState(false);
 
-  // ================= TEMA VISUAL POR UNIDADE =================
   const temaUnidade = unidadeAtiva === 'ponto2'
     ? {
         bordaTopo: 'border-t-4 border-t-cyan-500',
@@ -66,7 +63,6 @@ export default function App() {
         logoBg: 'bg-amber-500'
       };
 
-  // Configuração das Unidades + Fundo de Troco Fixo (R$ 200 padrão)
   const [unidadesConfig, setUnidadesConfig] = useState(() => {
     try {
       const salvo = localStorage.getItem('luisinho_unidades_config');
@@ -79,7 +75,6 @@ export default function App() {
   });
   const [modalConfigUnidades, setModalConfigUnidades] = useState(false);
 
-  // Lista permanente de Funcionários cadastrados
   const [funcionarios, setFuncionarios] = useState(() => {
     try {
       const salvoLocal = localStorage.getItem('luisinho_funcionarios');
@@ -90,7 +85,6 @@ export default function App() {
   });
   const [novoFuncionario, setNovoFuncionario] = useState({ nome: '', tel: '', unidade: 'ponto1' });
 
-  // Estados das tabelas no Supabase
   const [estoque, setEstoque] = useState([]);
   const [transacoes, setTransacoes] = useState([]);
   const [contasPagar, setContasPagar] = useState([]);
@@ -100,10 +94,8 @@ export default function App() {
   const [tabelaPrecos, setTabelaPrecos] = useState([]);
   const [orcamentosSalvos, setOrcamentosSalvos] = useState([]);
 
-  // ================= ESTADOS GLOBAIS DE ENVIO WHATSAPP =================
   const [comprovanteAtivo, setComprovanteAtivo] = useState(null);
 
-  // ================= ESTADOS DO PDV =================
   const [buscaPdv, setBuscaPdv] = useState('');
   const [carrinho, setCarrinho] = useState([]);
   const [descontoPdv, setDescontoPdv] = useState('');
@@ -117,7 +109,6 @@ export default function App() {
   const inputBuscaPdvRef = useRef(null);
   const finalizarVendaRef = useRef(null);
 
-  // ================= ESTADOS DA CALCULADORA / TABELA DE PREÇOS =================
   const [calcServicoId, setCalcServicoId] = useState('');
   const [calcPecaId, setCalcPecaId] = useState('');
   const [calcEstoqueId, setCalcEstoqueId] = useState('');
@@ -128,14 +119,15 @@ export default function App() {
   const [calcCliente, setCalcCliente] = useState({ nome: '', tel: '', endereco: '' });
   const [novoItemTabela, setNovoItemTabela] = useState({ id: null, grupo: 'servico', nome: '', marca: '', tipo_valor: 'fixo', valor: '' });
 
-  // ================= ESTADOS DO ESTOQUE =================
   const [novaChave, setNovaChave] = useState({ id: '', nome: '', cat: 'Yale / Comum', qtd: 10, minimo: 3, custo: '', venda: '' });
   const [editandoEstoqueId, setEditandoEstoqueId] = useState(null);
   const [buscaEstoque, setBuscaEstoque] = useState('');
   const [filtroCatEstoque, setFiltroCatEstoque] = useState('Todas');
   const [apenasEstoqueBaixo, setApenasEstoqueBaixo] = useState(false);
 
-  // ================= ESTADOS DE OS, AGENDA E CLIENTES =================
+  const [filtroStatusOS, setFiltroStatusOS] = useState('pendente');
+  const [filtroStatusAgenda, setFiltroStatusAgenda] = useState('pendente');
+
   const [novaOS, setNovaOS] = useState({
     cliente: '', tel: '', endereco: '', desc: '', valor: '',
     forma_pgto: 'Receber na Entrega (Pix/Cartão)',
@@ -157,7 +149,6 @@ export default function App() {
   const [buscaClienteCrm, setBuscaClienteCrm] = useState('');
   const [clienteHistoricoSelecionado, setClienteHistoricoSelecionado] = useState(null);
 
-  // ================= ESTADOS DO CAIXA, TROCO E FECHAMENTO DIÁRIO =================
   const [novaTransacao, setNovaTransacao] = useState({ tipo: 'saida', origem_caixa: 'faturado', desc: '', valor: '', forma: 'Dinheiro' });
   const [transacaoEditando, setTransacaoEditando] = useState(null);
   const [novaConta, setNovaConta] = useState({ desc: '', valor: '', vencimento: '' });
@@ -173,7 +164,6 @@ export default function App() {
     }
   });
 
-  // ================= ESTADOS DO ORÇAMENTO =================
   const [orcamento, setOrcamento] = useState({
     id: null,
     cliente: '',
@@ -190,22 +180,18 @@ export default function App() {
   const infoUnidadeAtual = unidadesConfig.find((u) => u.id === unidadeOperacional) || unidadesConfig[0];
   const funcionarioPadraoUnidade = funcionarios.find((f) => f.unidade === unidadeOperacional) || funcionarios[0] || null;
 
-  // Datas de referência calculadas uma única vez
   const hojeStr = new Date().toLocaleDateString('pt-BR');
   const hojeISO = new Date().toISOString().split('T')[0];
 
-  // Fundo de troco base da unidade selecionada
   const fundoTrocoBase = unidadeAtiva === 'todas'
     ? unidadesConfig.reduce((acc, u) => acc + Number(u.fundo_troco ?? 200), 0)
     : Number(infoUnidadeAtual?.fundo_troco ?? 200);
 
-  // Helper para identificar se uma transação pertence ao Caixa de Troco ou ao Faturado
   const isMovimentacaoTroco = (t) => {
     if (t.origem_caixa === 'troco') return true;
     return (t.desc || '').startsWith('[TROCO]');
   };
 
-  // Carregar dados do Supabase (silencioso em background quando silencioso = true)
   const carregarDados = async (silencioso = false) => {
     if (!silencioso) setLoading(true);
     setErroConexao(null);
@@ -285,7 +271,6 @@ export default function App() {
     };
   }, []);
 
-  // Atalhos de Teclado no PC com dependências controladas
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'F2') {
@@ -306,7 +291,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [abaAtiva, carrinho.length]);
 
-  // ================= HELPER: ABRIR PORTAL NFS-e (GOVERNO) + COPIAR DADOS =================
   const abrirPortalNFSe = async (dadosServico = null) => {
     const urlNFSe = 'https://www.nfse.gov.br/EmissorNacional/';
     if (dadosServico) {
@@ -327,20 +311,15 @@ export default function App() {
     window.open(urlNFSe, '_blank');
   };
 
-  // ================= HELPER DEFINITIVO: ABRIR WHATSAPP =================
   const abrirWhatsAppSeguro = (telefone, textoMensagem) => {
-    const numeroLimpo = (telefone || '').replace(/\D/g, '');
-    if (!numeroLimpo) {
+    const urlSegura = montarURLWhatsAppSeguro(telefone, textoMensagem);
+    if (!urlSegura) {
       mostrarToast('Informe um WhatsApp com DDD válido.', 'erro');
       return;
     }
-    const numeroComDDI = numeroLimpo.startsWith('55') && numeroLimpo.length >= 12 ? numeroLimpo : `55${numeroLimpo}`;
-    const textoSemHash = String(textoMensagem).replace(/#/g, 'Nº ');
-    const urlSegura = `https://api.whatsapp.com/send?phone=${numeroComDDI}&text=${encodeURIComponent(textoSemHash)}`;
     window.open(urlSegura, '_blank');
   };
 
-  // ================= FILTROS POR UNIDADE =================
   const filtraUnidade = (item) => {
     if (unidadeAtiva === 'todas') return true;
     const u = item.unidade || 'ponto1';
@@ -354,7 +333,6 @@ export default function App() {
   const contasUnidade = contasPagar.filter(filtraUnidade);
   const orcamentosUnidade = orcamentosSalvos.filter(filtraUnidade);
 
-  // ================= HELPER: AUTO-CADASTRO DE CLIENTE =================
   const garantirCadastroCliente = async (nome, tel, endereco = '', obsExtra = '', tipoCli = 'Residencial') => {
     const nomeLimpo = (nome || '').trim();
     if (!nomeLimpo || nomeLimpo.toLowerCase() === 'consumidor' || nomeLimpo.toLowerCase() === 'cliente') return;
@@ -383,7 +361,6 @@ export default function App() {
     }
   };
 
-  // ================= HELPER: ENVIAR COMPROVANTE AO CLIENTE =================
   const dispararComprovanteWhatsApp = (dados) => {
     const dataAtual = new Date().toLocaleDateString('pt-BR');
     const uniObj = unidadesConfig.find((u) => u.id === (dados.unidade || unidadeOperacional)) || infoUnidadeAtual;
@@ -411,7 +388,6 @@ export default function App() {
     abrirWhatsAppSeguro(dados.tel, linhas.join('\n'));
   };
 
-  // ================= HELPER: ENVIAR FICHA COMPLETA PARA O FUNCIONÁRIO =================
   const enviarDiretoParaFuncionario = (tipo, registro) => {
     const uniObj = unidadesConfig.find((u) => u.id === (registro.unidade || unidadeOperacional)) || infoUnidadeAtual;
     const telFunc = registro.funcionario_tel || funcionarioPadraoUnidade?.tel || '';
@@ -442,7 +418,7 @@ export default function App() {
         `*Unidade:* ${uniObj.nome}`,
         `*Responsavel:* ${nomeFunc}`,
         `*Ordem de Servico:* Nº ${codigoOS}`,
-        `*Data:* ${registro.data || new Date().toLocaleDateString('pt-BR')}`,
+        `*Data:* ${registro.data || hojeStr}`,
         `----------------------------------`,
         `*DADOS DO CLIENTE:*`,
         `*Cliente:* ${registro.cliente || 'Nao informado'}`,
@@ -488,7 +464,6 @@ export default function App() {
     }
   };
 
-  // ================= GERENCIAR FUNCIONÁRIOS E UNIDADES =================
   const adicionarFuncionario = async (e) => {
     e.preventDefault();
     if (!novoFuncionario.nome || !novoFuncionario.tel) return;
@@ -535,7 +510,6 @@ export default function App() {
     carregarDados(true);
   };
 
-  // ================= FUNÇÕES DO PDV =================
   const taxasCartaoDisponiveis = tabelaPrecos.filter((t) => t.grupo === 'taxa_cartao');
 
   const adicionarAoCarrinho = (item) => {
@@ -691,7 +665,6 @@ export default function App() {
 
   finalizarVendaRef.current = finalizarVendaPdv;
 
-  // ================= FUNÇÕES DA CALCULADORA / TABELA DE PREÇOS =================
   const listaServicosBase = tabelaPrecos.filter((t) => t.grupo === 'servico');
   const listaPecasTabela = tabelaPrecos.filter((t) => t.grupo === 'peca');
   const listaAdicionais = tabelaPrecos.filter((t) => t.grupo === 'adicional');
@@ -850,7 +823,6 @@ export default function App() {
     carregarDados(true);
   };
 
-  // ================= FUNÇÕES DO ESTOQUE =================
   const salvarNovaChave = async (e) => {
     e.preventDefault();
     if (!novaChave.nome) return;
@@ -941,7 +913,6 @@ export default function App() {
   const capitalTotalEstoque = estoqueUnidade.reduce((acc, i) => acc + Number(i.custo || 0) * Number(i.qtd || 0), 0);
   const potencialVendaEstoque = estoqueUnidade.reduce((acc, i) => acc + Number(i.venda || 0) * Number(i.qtd || 0), 0);
 
-  // ================= FUNÇÕES DE ORDENS DE SERVIÇO =================
   const adicionarMaterialNaOS = () => {
     if (!itemTempOS.chave_id) return;
     const ch = estoqueUnidade.find((e) => e.id === itemTempOS.chave_id);
@@ -1103,7 +1074,6 @@ export default function App() {
     carregarDados(true);
   };
 
-  // ================= FUNÇÕES DA AGENDA DE SOCORROS =================
   const adicionarMaterialNoSocorro = () => {
     if (!itemTempAg.chave_id) return;
     const ch = estoqueUnidade.find((e) => e.id === itemTempAg.chave_id);
@@ -1246,7 +1216,6 @@ export default function App() {
     carregarDados(true);
   };
 
-  // ================= FUNÇÕES DE CLIENTES (CRIAR E EDITAR) =================
   const salvarCliente = async (e) => {
     e.preventDefault();
     if (!novoCliente.nome.trim()) return;
@@ -1298,10 +1267,13 @@ export default function App() {
     mostrarToast('Cliente removido.');
     carregarDados(true);
   };
-  };// ================= FUNÇÕES DO CAIXA, TROCO & FECHAMENTO DIÁRIO =================
+
   const adicionarTransacaoManual = async (e) => {
     e.preventDefault();
-    if (!novaTransacao.desc || !novaTransacao.valor) return;
+    if (!novaTransacao.desc || novaTransacao.valor === '' || Number(novaTransacao.valor) <= 0) {
+      mostrarToast('Informe descrição e valor maior que zero.', 'erro');
+      return;
+    }
 
     const ehTroco = novaTransacao.origem_caixa === 'troco';
     const descLimpa = novaTransacao.desc.replace(/^\[TROCO\]\s*/i, '').trim();
@@ -1315,7 +1287,7 @@ export default function App() {
       valor: Number(novaTransacao.valor),
       custo_insumo: 0,
       forma: ehTroco ? 'Dinheiro' : novaTransacao.forma,
-      data: new Date().toLocaleDateString('pt-BR'),
+      data: hojeStr,
       timestamp: Date.now(),
       unidade: unidadeOperacional
     };
@@ -1332,7 +1304,7 @@ export default function App() {
     setNovaTransacao({ tipo: 'saida', origem_caixa: 'faturado', desc: '', valor: '', forma: 'Dinheiro' });
     toggleForm('caixa', false);
     mostrarToast(ehTroco ? 'Movimentação registrada no Caixa de Troco!' : 'Lançamento registrado no Faturado!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const reporTrocoAutomatico = async (valorFaltante) => {
@@ -1348,7 +1320,7 @@ export default function App() {
       valor: Number(valorFaltante.toFixed(2)),
       custo_insumo: 0,
       forma: 'Dinheiro',
-      data: new Date().toLocaleDateString('pt-BR'),
+      data: hojeStr,
       timestamp: agora,
       unidade: unidadeOperacional
     };
@@ -1360,7 +1332,7 @@ export default function App() {
       valor: Number(valorFaltante.toFixed(2)),
       custo_insumo: 0,
       forma: 'Dinheiro',
-      data: new Date().toLocaleDateString('pt-BR'),
+      data: hojeStr,
       timestamp: agora + 1,
       unidade: unidadeOperacional
     };
@@ -1372,11 +1344,11 @@ export default function App() {
       await supabase.from('transacoes').insert([b1, b2]);
     }
     mostrarToast(`Troco recomposto (+R$ ${valorFaltante.toFixed(2)})!`);
-    carregarDados();
+    carregarDados(true);
   };
 
   const salvarEdicaoTransacao = async () => {
-    if (!transacaoEditando || !transacaoEditando.desc || transacaoEditando.valor === '') return;
+    if (!transacaoEditando || !transacaoEditando.desc || transacaoEditando.valor === '' || Number(transacaoEditando.valor) < 0) return;
 
     const ehTroco = transacaoEditando.origem_caixa === 'troco';
     const descLimpa = transacaoEditando.desc.replace(/^\[TROCO\]\s*/i, '').trim();
@@ -1401,25 +1373,25 @@ export default function App() {
     }
     setTransacaoEditando(null);
     mostrarToast('Movimentação atualizada!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const quitarPendenciaReceber = async (trans) => {
     await supabase.from('transacoes').update({ forma: 'Pix' }).eq('id', trans.id);
     mostrarToast('Fiado marcado como recebido!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const excluirTransacao = async (id) => {
     if (!window.confirm('Deseja excluir este lançamento do caixa?')) return;
     await supabase.from('transacoes').delete().eq('id', id);
     mostrarToast('Lançamento excluído.');
-    carregarDados();
+    carregarDados(true);
   };
 
   const criarContaPagar = async (e) => {
     e.preventDefault();
-    if (!novaConta.desc || !novaConta.valor || !novaConta.vencimento) return;
+    if (!novaConta.desc || !novaConta.valor || !novaConta.vencimento || Number(novaConta.valor) <= 0) return;
     const itemConta = {
       id: Date.now(),
       desc: novaConta.desc,
@@ -1436,7 +1408,7 @@ export default function App() {
     setNovaConta({ desc: '', valor: '', vencimento: '' });
     toggleForm('boleto', false);
     mostrarToast('Boleto agendado no calendário!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const darBaixaBoleto = async (conta, debitarDoCaixa = false) => {
@@ -1452,7 +1424,7 @@ export default function App() {
         valor: Number(conta.valor),
         custo_insumo: 0,
         forma: 'Boleto',
-        data: new Date().toLocaleDateString('pt-BR'),
+        data: hojeStr,
         timestamp: Date.now(),
         unidade: conta.unidade || unidadeOperacional
       };
@@ -1465,20 +1437,20 @@ export default function App() {
     } else {
       mostrarToast('Boleto quitado na agenda (sem mexer no caixa)!');
     }
-    carregarDados();
+    carregarDados(true);
   };
 
   const reabrirBoleto = async (conta) => {
     await supabase.from('contas_pagar').update({ status: 'pendente' }).eq('id', conta.id);
     mostrarToast('Boleto reaberto.');
-    carregarDados();
+    carregarDados(true);
   };
 
   const excluirContaPagar = async (id) => {
     if (!window.confirm('Excluir este boleto da agenda?')) return;
     await supabase.from('contas_pagar').delete().eq('id', id);
     mostrarToast('Boleto excluído.');
-    carregarDados();
+    carregarDados(true);
   };
 
   const exportarCSVRelatorio = () => {
@@ -1500,8 +1472,6 @@ export default function App() {
     if (filtroPeriodoCaixa === 'areceber') return t.forma === 'A Receber (Fiado)';
     if (filtroPeriodoCaixa === 'troco') return isMovimentacaoTroco(t);
     const hoje = new Date();
-    const hojeStr = hoje.toLocaleDateString('pt-BR');
-
     if (filtroPeriodoCaixa === 'hoje') return t.data === hojeStr;
     if (filtroPeriodoCaixa === '7dias') {
       const diffDias = (Date.now() - Number(t.timestamp)) / (1000 * 60 * 60 * 24);
@@ -1517,9 +1487,7 @@ export default function App() {
     return true;
   });
 
-  // Separação matemática entre CAIXA DO FATURADO e CAIXA DE TROCO
   const transacoesFaturado = transacoesFiltradas.filter((t) => !isMovimentacaoTroco(t));
-  const transacoesTroco = transacoesFiltradas.filter((t) => isMovimentacaoTroco(t));
 
   const totalEntradas = transacoesFaturado.filter((t) => t.tipo === 'entrada' && t.forma !== 'A Receber (Fiado)').reduce((acc, t) => acc + Number(t.valor), 0);
   const totalAReceber = transacoesUnidade.filter((t) => !isMovimentacaoTroco(t) && t.tipo === 'entrada' && t.forma === 'A Receber (Fiado)').reduce((acc, t) => acc + Number(t.valor), 0);
@@ -1528,16 +1496,11 @@ export default function App() {
   const saldoOperacionalFaturado = totalEntradas - totalSaidasFaturado;
   const lucroRealPeriodo = totalEntradas - totalSaidasFaturado - custoInsumosPeriodo;
 
-  // Movimentações do Caixa de Troco (acumulado geral da unidade para refletir o saldo real atual do troco na gaveta)
   const todasTransacoesTrocoUnidade = transacoesUnidade.filter((t) => isMovimentacaoTroco(t));
   const entradasTrocoGeral = todasTransacoesTrocoUnidade.filter((t) => t.tipo === 'entrada').reduce((acc, t) => acc + Number(t.valor), 0);
   const saidasTrocoGeral = todasTransacoesTrocoUnidade.filter((t) => t.tipo === 'saida').reduce((acc, t) => acc + Number(t.valor), 0);
   const saldoTrocoAtual = fundoTrocoBase + entradasTrocoGeral - saidasTrocoGeral;
   const diferencaReposicaoTroco = Math.max(0, fundoTrocoBase - saldoTrocoAtual);
-
-  // Movimentações do troco apenas no período filtrado (para o relatório diário)
-  const entradasTrocoPeriodo = transacoesTroco.filter((t) => t.tipo === 'entrada').reduce((acc, t) => acc + Number(t.valor), 0);
-  const saidasTrocoPeriodo = transacoesTroco.filter((t) => t.tipo === 'saida').reduce((acc, t) => acc + Number(t.valor), 0);
 
   const entradasPix = transacoesFaturado.filter((t) => t.tipo === 'entrada' && t.forma.includes('Pix')).reduce((acc, t) => acc + Number(t.valor), 0);
   const entradasDinheiro = transacoesFaturado.filter((t) => t.tipo === 'entrada' && t.forma.includes('Dinheiro')).reduce((acc, t) => acc + Number(t.valor), 0);
@@ -1545,10 +1508,6 @@ export default function App() {
   const liquidoDinheiroFaturado = entradasDinheiro - saidasDinheiroFaturado;
   const totalGavetaFisica = saldoTrocoAtual + liquidoDinheiroFaturado;
   const entradasCartao = transacoesFaturado.filter((t) => t.tipo === 'entrada' && t.forma.includes('Cartão')).reduce((acc, t) => acc + Number(t.valor), 0);
-
-  // ================= GERADOR DE RELATÓRIO DE FECHAMENTO DE CAIXA DIÁRIO =================
-  const hojeStr = new Date().toLocaleDateString('pt-BR');
-  const hojeISO = new Date().toISOString().split('T')[0];
 
   const gerarTextoFechamentoDiario = () => {
     const transHoje = transacoesUnidade.filter((t) => t.data === hojeStr);
@@ -1645,7 +1604,6 @@ export default function App() {
     }
   };
 
-  // ================= FUNÇÕES DO ORÇAMENTO =================
   const adicionarLinhaOrcamento = () => {
     setOrcamento({ ...orcamento, itens: [...orcamento.itens, { desc: '', qtd: 1, valor: 0 }] });
   };
@@ -1657,7 +1615,7 @@ export default function App() {
 
   const atualizarItemOrcamento = (index, campo, valor) => {
     const novosItens = [...orcamento.itens];
-    novosItens[index][campo] = valor;
+    novosItens[index][campo] = campo === 'qtd' || campo === 'valor' ? Math.max(0, Number(valor)) : valor;
     setOrcamento({ ...orcamento, itens: novosItens });
   };
 
@@ -1712,7 +1670,7 @@ export default function App() {
       total: totalOrcamento,
       obs: orcamento.obs,
       status: 'standby',
-      data: new Date().toLocaleDateString('pt-BR'),
+      data: hojeStr,
       unidade: unidadeOperacional
     };
 
@@ -1765,7 +1723,7 @@ export default function App() {
     });
     toggleForm('orcamento', false);
     mostrarToast('Orçamento salvo em Standby!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const carregarOrcamentoParaEdicao = (orc) => {
@@ -1803,7 +1761,7 @@ export default function App() {
       funcionario_nome: funcionarioPadraoUnidade?.nome || '',
       funcionario_tel: funcionarioPadraoUnidade?.tel || '',
       status: 'pendente',
-      data: new Date().toLocaleDateString('pt-BR'),
+      data: hojeStr,
       unidade: orc.unidade || unidadeOperacional
     };
 
@@ -1829,22 +1787,36 @@ export default function App() {
     }
     mostrarToast('Orçamento aprovado e convertido em OS!');
     setAbaAtiva('os');
-    carregarDados();
+    carregarDados(true);
   };
 
   const excluirOrcamentoSalvo = async (id) => {
     if (!window.confirm('Remover este orçamento da lista?')) return;
     await supabase.from('orcamentos').delete().eq('id', id);
     mostrarToast('Orçamento excluído.');
-    carregarDados();
+    carregarDados(true);
   };
 
-  // ================= DADOS DO DASHBOARD =================
   const faturamentoHoje = transacoesUnidade
     .filter((t) => !isMovimentacaoTroco(t) && t.tipo === 'entrada' && t.data === hojeStr && t.forma !== 'A Receber (Fiado)')
     .reduce((acc, t) => acc + Number(t.valor), 0);
+
   const osPendentes = osUnidade.filter((o) => o.status !== 'concluida');
+  const osConcluidas = osUnidade.filter((o) => o.status === 'concluida');
+  const osExibidas = filtroStatusOS === 'pendente'
+    ? osPendentes
+    : filtroStatusOS === 'concluida'
+    ? osConcluidas
+    : osUnidade;
+
   const socorrosPendentes = agendaUnidade.filter((a) => a.status !== 'concluido');
+  const socorrosConcluidos = agendaUnidade.filter((a) => a.status === 'concluido');
+  const socorrosExibidos = filtroStatusAgenda === 'pendente'
+    ? socorrosPendentes
+    : filtroStatusAgenda === 'concluido'
+    ? socorrosConcluidos
+    : agendaUnidade;
+
   const boletosPendentes = contasUnidade.filter((c) => c.status === 'pendente');
   const orcamentosEmStandby = orcamentosUnidade.filter((o) => o.status === 'standby');
 
@@ -1860,7 +1832,6 @@ export default function App() {
     { id: 'clientes', label: 'Clientes', icon: Users },
   ];
 
-  // Bloco reutilizável da Comanda do PDV
   const renderComandaPDV = () => (
     <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4">
       <div className="space-y-3">
@@ -1963,6 +1934,7 @@ export default function App() {
           <input
             type="number"
             step="0.01"
+            min="0"
             placeholder="0,00"
             value={descontoPdv}
             onChange={(e) => setDescontoPdv(e.target.value)}
@@ -2024,10 +1996,8 @@ export default function App() {
       </div>
     </div>
   );
-
   return (
     <div className={`min-h-screen bg-slate-950 text-slate-100 flex flex-col pb-32 md:pb-8 ${temaUnidade.bordaTopo}`}>
-      {/* NOTIFICAÇÃO TOAST FLUTUANTE */}
       {toast && (
         <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl shadow-2xl border text-xs font-bold flex items-center gap-2 transition-all ${
           toast.tipo === 'erro'
@@ -2039,7 +2009,6 @@ export default function App() {
         </div>
       )}
 
-      {/* CABEÇALHO COM COR DINÂMICA POR UNIDADE */}
       <header className="bg-slate-900 border-b border-slate-800 px-3 py-2.5 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -2098,7 +2067,7 @@ export default function App() {
               <Settings size={14} /> Equipe / Lojas
             </button>
             <button
-              onClick={carregarDados}
+              onClick={() => carregarDados(false)}
               className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 text-slate-300"
               title="Atualizar dados"
             >
@@ -2108,7 +2077,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* MODAL PARA CADASTRAR FUNCIONÁRIOS, ENDEREÇOS E FUNDO DE TROCO FIXO */}
       {modalConfigUnidades && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 max-w-lg w-full space-y-5 my-8">
@@ -2201,10 +2169,11 @@ export default function App() {
                       <input
                         type="number"
                         step="0.01"
+                        min="0"
                         value={uni.fundo_troco ?? 200}
                         onChange={(e) => {
                           const copia = [...unidadesConfig];
-                          copia[idx].fundo_troco = e.target.value === '' ? '' : Number(e.target.value);
+                          copia[idx].fundo_troco = e.target.value === '' ? '' : Math.max(0, Number(e.target.value));
                           setUnidadesConfig(copia);
                         }}
                         className="w-full bg-transparent text-xs font-bold text-white outline-none"
@@ -2232,7 +2201,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DE FECHAMENTO DE CAIXA DIÁRIO */}
       {modalFechamentoCaixa && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 max-w-xl w-full space-y-4 my-8 shadow-2xl">
@@ -2253,6 +2221,7 @@ export default function App() {
                 <input
                   type="number"
                   step="0.01"
+                  min="0"
                   placeholder={`Esperado: R$ ${totalGavetaFisica.toFixed(2)}`}
                   value={dinheiroContadoFechamento}
                   onChange={(e) => setDinheiroContadoFechamento(e.target.value)}
@@ -2332,7 +2301,6 @@ export default function App() {
         </div>
       )}
 
-      {/* BARRA DE NAVEGAÇÃO SUPERIOR */}
       <nav className="bg-slate-900 border-b border-slate-800 px-2 py-2 flex overflow-x-auto gap-1 sticky top-[57px] z-20 no-scrollbar">
         {abasMenu.map((aba) => {
           const Icone = aba.icon;
@@ -2353,7 +2321,6 @@ export default function App() {
         })}
       </nav>
 
-      {/* PAINEL GLOBAL: ENVIO DE COMPROVANTE WHATSAPP AO CLIENTE */}
       {comprovanteAtivo && (
         <div className="max-w-6xl w-full mx-auto px-4 pt-4">
           <div className="bg-emerald-950/90 border-2 border-emerald-500 p-4 rounded-xl space-y-3 shadow-lg">
@@ -2397,7 +2364,6 @@ export default function App() {
       )}
 
       <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-4 space-y-5">
-        {/* ================= ABA 0: DASHBOARD EXECUTIVO ================= */}
         {abaAtiva === 'dashboard' && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -2510,7 +2476,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 1: PDV / BALCÃO ================= */}
         {abaAtiva === 'pdv' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 space-y-4">
@@ -2607,6 +2572,7 @@ export default function App() {
                           <input
                             type="number"
                             step="0.01"
+                            min="0"
                             placeholder="Preço R$"
                             required
                             value={servicoRapidoForm.valor}
@@ -2694,6 +2660,7 @@ export default function App() {
                     <input
                       type="number"
                       step="0.01"
+                      min="0"
                       placeholder="Valor (R$)"
                       value={servicoAvulsoValor}
                       onChange={(e) => setServicoAvulsoValor(e.target.value)}
@@ -2740,7 +2707,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 2: SIMULADOR DE PREÇOS & TABELA EDITÁVEL ================= */}
         {abaAtiva === 'simulador' && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -3003,6 +2969,7 @@ export default function App() {
                       <input
                         type="number"
                         step="0.01"
+                        min="0"
                         placeholder="Valor *"
                         required
                         value={novoItemTabela.valor}
@@ -3045,12 +3012,11 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 3: ORDENS DE SERVIÇO ================= */}
         {abaAtiva === 'os' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
-                Ordens de Serviço — {infoUnidadeAtual.nome} ({osUnidade.length})
+                Ordens de Serviço — {infoUnidadeAtual.nome} ({osExibidas.length})
               </h2>
               <button
                 onClick={() => toggleForm('os')}
@@ -3058,6 +3024,24 @@ export default function App() {
               >
                 {formAberto.os ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Nova Ordem de Serviço</>}
               </button>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: 'pendente', label: `Pendentes (${osPendentes.length})` },
+                { id: 'concluida', label: `Concluídas (${osConcluidas.length})` },
+                { id: 'todas', label: `Todas (${osUnidade.length})` }
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setFiltroStatusOS(f.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                    filtroStatusOS === f.id ? temaUnidade.botaoAtivo : 'bg-slate-900 text-slate-400 border border-slate-800'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
 
             {formAberto.os && (
@@ -3127,6 +3111,7 @@ export default function App() {
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     placeholder="Valor Total (R$) *"
                     required
                     value={novaOS.valor}
@@ -3249,7 +3234,7 @@ export default function App() {
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {osUnidade.map((os) => {
+              {osExibidas.map((os) => {
                 const listaMat = Array.isArray(os.itens_usados) && os.itens_usados.length > 0
                   ? os.itens_usados
                   : (os.chave_id ? [{ id: os.chave_id, nome: os.chave_id, qtd: os.qtd_copias }] : []);
@@ -3349,12 +3334,11 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 4: AGENDA DE SOCORROS ================= */}
         {abaAtiva === 'agenda' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
-                Socorros Externos — {infoUnidadeAtual.nome} ({agendaUnidade.length})
+                Socorros Externos — {infoUnidadeAtual.nome} ({socorrosExibidos.length})
               </h2>
               <button
                 onClick={() => toggleForm('agenda')}
@@ -3362,6 +3346,24 @@ export default function App() {
               >
                 {formAberto.agenda ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Agendar Socorro</>}
               </button>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: 'pendente', label: `Pendentes (${socorrosPendentes.length})` },
+                { id: 'concluido', label: `Concluídos (${socorrosConcluidos.length})` },
+                { id: 'todos', label: `Todos (${agendaUnidade.length})` }
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setFiltroStatusAgenda(f.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                    filtroStatusAgenda === f.id ? temaUnidade.botaoAtivo : 'bg-slate-900 text-slate-400 border border-slate-800'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
 
             {formAberto.agenda && (
@@ -3434,6 +3436,7 @@ export default function App() {
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     placeholder="Valor Total Combinado (R$)"
                     value={novoAgendamento.valor_estimado}
                     onChange={(e) => setNovoAgendamento({ ...novoAgendamento, valor_estimado: e.target.value, taxa_deslocamento: 0 })}
@@ -3520,7 +3523,7 @@ export default function App() {
             )}
 
             <div className="space-y-3">
-              {agendaUnidade.map((ag) => {
+              {socorrosExibidos.map((ag) => {
                 const totalSoc = Number(ag.valor_estimado || 0) + Number(ag.taxa_deslocamento || 0);
                 const listaMat = Array.isArray(ag.itens_usados) ? ag.itens_usados : [];
                 const nomeFuncSoc = ag.funcionario_nome || funcionarioPadraoUnidade?.nome || '';
@@ -3589,7 +3592,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 5: ORÇAMENTOS ================= */}
         {abaAtiva === 'orcamento' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3721,6 +3723,7 @@ export default function App() {
                         <input
                           type="number"
                           step="0.01"
+                          min="0"
                           placeholder="Valor Un."
                           value={item.valor}
                           onChange={(e) => atualizarItemOrcamento(index, 'valor', e.target.value)}
@@ -3855,7 +3858,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 6: CAIXA (TROCO VS FATURADO + FECHAMENTO DIÁRIO) & BOLETOS ================= */}
         {abaAtiva === 'caixa' && (
           <div className="space-y-5">
             <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2">
@@ -3903,7 +3905,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* ALERTA DE REPOSIÇÃO DO CAIXA DE TROCO SE ESTIVER ABAIXO DA BASE (R$ 200) */}
             {diferencaReposicaoTroco > 0 && unidadeAtiva !== 'todas' && (
               <div className="bg-amber-950/50 border border-amber-600/70 p-3 rounded-xl flex flex-wrap items-center justify-between gap-2">
                 <div className="text-xs text-amber-200">
@@ -4039,6 +4040,7 @@ export default function App() {
                         <input
                           type="number"
                           step="0.01"
+                          min="0.01"
                           placeholder="Valor R$"
                           required
                           value={novaTransacao.valor}
@@ -4105,6 +4107,7 @@ export default function App() {
                               <input
                                 type="number"
                                 step="0.01"
+                                min="0"
                                 value={transacaoEditando.valor}
                                 onChange={(e) => setTransacaoEditando({ ...transacaoEditando, valor: e.target.value })}
                                 className="w-32 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-amber-400"
@@ -4200,6 +4203,7 @@ export default function App() {
                       <input
                         type="number"
                         step="0.01"
+                        min="0.01"
                         placeholder="Valor R$ *"
                         required
                         value={novaConta.valor}
@@ -4266,7 +4270,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 7: ESTOQUE ================= */}
         {abaAtiva === 'estoque' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -4356,6 +4359,7 @@ export default function App() {
                   </select>
                   <input
                     type="number"
+                    min="0"
                     placeholder="Qtd"
                     value={novaChave.qtd}
                     onChange={(e) => setNovaChave({ ...novaChave, qtd: e.target.value })}
@@ -4364,6 +4368,7 @@ export default function App() {
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     placeholder="Custo R$"
                     value={novaChave.custo}
                     onChange={(e) => setNovaChave({ ...novaChave, custo: e.target.value })}
@@ -4372,6 +4377,7 @@ export default function App() {
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     placeholder="Venda R$ *"
                     required
                     value={novaChave.venda}
@@ -4463,7 +4469,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 8: CRM DE CLIENTES (COM EDIÇÃO COMPLETA) ================= */}
         {abaAtiva === 'clientes' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -4633,7 +4638,6 @@ export default function App() {
         )}
       </main>
 
-      {/* BARRA DE NAVEGAÇÃO INFERIOR FIXA PARA CELULAR */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 px-2 py-1.5 grid grid-cols-5 gap-1 z-30">
         {[
           { id: 'dashboard', label: 'Hoje', icon: LayoutDashboard },
@@ -4659,4 +4663,4 @@ export default function App() {
       </div>
     </div>
   );
-} 
+}
