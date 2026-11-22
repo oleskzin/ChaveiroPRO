@@ -115,6 +115,7 @@ export default function App() {
   const [taxaCartaoIdPdv, setTaxaCartaoIdPdv] = useState('');
   const [clientePdv, setClientePdv] = useState({ nome: '', tel: '', obs: '' });
   const inputBuscaPdvRef = useRef(null);
+  const finalizarVendaRef = useRef(null);
 
   // ================= ESTADOS DA CALCULADORA / TABELA DE PREÇOS =================
   const [calcServicoId, setCalcServicoId] = useState('');
@@ -189,6 +190,10 @@ export default function App() {
   const infoUnidadeAtual = unidadesConfig.find((u) => u.id === unidadeOperacional) || unidadesConfig[0];
   const funcionarioPadraoUnidade = funcionarios.find((f) => f.unidade === unidadeOperacional) || funcionarios[0] || null;
 
+  // Datas de referência calculadas uma única vez
+  const hojeStr = new Date().toLocaleDateString('pt-BR');
+  const hojeISO = new Date().toISOString().split('T')[0];
+
   // Fundo de troco base da unidade selecionada
   const fundoTrocoBase = unidadeAtiva === 'todas'
     ? unidadesConfig.reduce((acc, u) => acc + Number(u.fundo_troco ?? 200), 0)
@@ -200,9 +205,9 @@ export default function App() {
     return (t.desc || '').startsWith('[TROCO]');
   };
 
-  // Carregar dados do Supabase
-  const carregarDados = async () => {
-    setLoading(true);
+  // Carregar dados do Supabase (silencioso em background quando silencioso = true)
+  const carregarDados = async (silencioso = false) => {
+    if (!silencioso) setLoading(true);
     setErroConexao(null);
     try {
       const [
@@ -262,16 +267,16 @@ export default function App() {
       console.error('Erro ao buscar dados:', err);
       setErroConexao(err.message || 'Falha ao conectar com o Supabase.');
     } finally {
-      setLoading(false);
+      if (!silencioso) setLoading(false);
     }
   };
 
   useEffect(() => {
-    carregarDados();
+    carregarDados(false);
     const canal = supabase
       .channel('sincronizacao_luisinho_v33')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        carregarDados();
+        carregarDados(true);
       })
       .subscribe();
 
@@ -280,7 +285,7 @@ export default function App() {
     };
   }, []);
 
-  // Atalhos de Teclado no PC
+  // Atalhos de Teclado no PC com dependências controladas
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'F2') {
@@ -289,17 +294,17 @@ export default function App() {
         setTimeout(() => inputBuscaPdvRef.current?.focus(), 100);
       } else if (e.key === 'F4' && abaAtiva === 'pdv' && carrinho.length > 0) {
         e.preventDefault();
-        finalizarVendaPdv();
+        finalizarVendaRef.current?.();
       } else if (e.key === 'Escape') {
         setTransacaoEditando(null);
         setComandaMobileAberta(false);
         setModalFechamentoCaixa(false);
-        cancelarEdicaoEstoque();
+        setEditandoEstoqueId(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  });
+  }, [abaAtiva, carrinho.length]);
 
   // ================= HELPER: ABRIR PORTAL NFS-e (GOVERNO) + COPIAR DADOS =================
   const abrirPortalNFSe = async (dadosServico = null) => {
@@ -519,7 +524,7 @@ export default function App() {
         id: u.id,
         nome: u.nome,
         endereco: u.endereco,
-        fundo_troco: Number(u.fundo_troco || 0)
+        fundo_troco: Math.max(0, Number(u.fundo_troco || 0))
       }]);
       if (error) {
         await supabase.from('unidades_config').upsert([{ id: u.id, nome: u.nome, endereco: u.endereco }]);
@@ -527,7 +532,7 @@ export default function App() {
     }
     setModalConfigUnidades(false);
     mostrarToast('Unidades e Fundo de Troco atualizados!');
-    carregarDados();
+    carregarDados(true);
   };
 
   // ================= FUNÇÕES DO PDV =================
@@ -546,7 +551,7 @@ export default function App() {
   const adicionarServicoAvulsoPdv = (descCustom = null, valorCustom = null) => {
     const descFinal = descCustom || servicoAvulsoDesc;
     const valorFinal = valorCustom !== null ? valorCustom : servicoAvulsoValor;
-    if (!descFinal || valorFinal === '') return;
+    if (!descFinal || valorFinal === '' || Number(valorFinal) < 0) return;
 
     const novoItem = {
       id: `srv_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
@@ -567,8 +572,8 @@ export default function App() {
 
   const salvarServicoRapidoPdv = async (e) => {
     e.preventDefault();
-    if (!servicoRapidoForm.nome.trim() || servicoRapidoForm.valor === '') {
-      mostrarToast('Preencha o nome e o valor do serviço.', 'erro');
+    if (!servicoRapidoForm.nome.trim() || servicoRapidoForm.valor === '' || Number(servicoRapidoForm.valor) < 0) {
+      mostrarToast('Preencha o nome e um valor válido.', 'erro');
       return;
     }
     const item = {
@@ -587,12 +592,12 @@ export default function App() {
     const eraEdicao = Boolean(servicoRapidoForm.id);
     setServicoRapidoForm({ id: null, nome: '', valor: '' });
     mostrarToast(eraEdicao ? 'Serviço rápido atualizado!' : 'Novo serviço rápido salvo!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const alterarPrecoItemCarrinho = (idx, novoPreco) => {
     const copia = [...carrinho];
-    copia[idx].precoEditado = novoPreco === '' ? '' : Number(novoPreco);
+    copia[idx].precoEditado = novoPreco === '' ? '' : Math.max(0, Number(novoPreco));
     setCarrinho(copia);
   };
 
@@ -605,7 +610,7 @@ export default function App() {
 
   const totalItensCarrinho = carrinho.reduce((acc, i) => acc + Number(i.qtdVenda), 0);
   const subtotalCarrinho = carrinho.reduce((acc, i) => acc + Number(i.precoEditado || 0) * Number(i.qtdVenda), 0);
-  const valorDescontoPdv = Number(descontoPdv || 0);
+  const valorDescontoPdv = Math.max(0, Number(descontoPdv || 0));
   const totalLiquidoPdv = Math.max(0, subtotalCarrinho - valorDescontoPdv);
 
   const taxaSelecionadaObj = taxasCartaoDisponiveis.find((t) => t.id.toString() === taxaCartaoIdPdv.toString());
@@ -634,7 +639,7 @@ export default function App() {
       valor: totalLiquidoPdv,
       custo_insumo: custoTotalComTaxa,
       forma: detalheForma,
-      data: new Date().toLocaleDateString('pt-BR'),
+      data: hojeStr,
       timestamp: Date.now(),
       unidade: unidadeOperacional
     };
@@ -680,9 +685,11 @@ export default function App() {
     setClientePdv({ nome: '', tel: '', obs: '' });
     setComandaMobileAberta(false);
     mostrarToast(`Venda de R$ ${totalLiquidoPdv.toFixed(2)} registrada!`);
-    await carregarDados();
+    await carregarDados(true);
     setLoading(false);
   };
+
+  finalizarVendaRef.current = finalizarVendaPdv;
 
   // ================= FUNÇÕES DA CALCULADORA / TABELA DE PREÇOS =================
   const listaServicosBase = tabelaPrecos.filter((t) => t.grupo === 'servico');
@@ -750,7 +757,7 @@ export default function App() {
       total: Number(totalFinalSimulador.toFixed(2)),
       obs: obsTexto,
       status: 'standby',
-      data: new Date().toLocaleDateString('pt-BR'),
+      data: hojeStr,
       unidade: unidadeOperacional
     };
 
@@ -786,7 +793,7 @@ export default function App() {
 
     mostrarToast('Cotação salva na fila de Standby!');
     setCalcCliente({ nome: '', tel: '', endereco: '' });
-    carregarDados();
+    carregarDados(true);
   };
 
   const enviarSimuladorParaPDV = () => {
@@ -821,7 +828,7 @@ export default function App() {
 
   const salvarItemTabelaPrecos = async (e) => {
     e.preventDefault();
-    if (!novoItemTabela.nome || novoItemTabela.valor === '') return;
+    if (!novoItemTabela.nome || novoItemTabela.valor === '' || Number(novoItemTabela.valor) < 0) return;
     const item = {
       id: novoItemTabela.id || Date.now(),
       grupo: novoItemTabela.grupo,
@@ -833,14 +840,14 @@ export default function App() {
     await supabase.from('tabela_precos').upsert([item]);
     setNovoItemTabela({ id: null, grupo: 'servico', nome: '', marca: '', tipo_valor: 'fixo', valor: '' });
     mostrarToast('Item salvo na tabela de preços!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const excluirItemTabelaPrecos = async (id) => {
     if (!window.confirm('Excluir este item da tabela?')) return;
     await supabase.from('tabela_precos').delete().eq('id', id);
     mostrarToast('Item removido da tabela.');
-    carregarDados();
+    carregarDados(true);
   };
 
   // ================= FUNÇÕES DO ESTOQUE =================
@@ -854,10 +861,10 @@ export default function App() {
       id: idFinal,
       nome: novaChave.nome,
       cat: novaChave.cat,
-      qtd: Number(novaChave.qtd || 0),
-      minimo: Number(novaChave.minimo || 3),
-      custo: Number(novaChave.custo || 0),
-      venda: Number(novaChave.venda || 0),
+      qtd: Math.max(0, Number(novaChave.qtd || 0)),
+      minimo: Math.max(0, Number(novaChave.minimo || 3)),
+      custo: Math.max(0, Number(novaChave.custo || 0)),
+      venda: Math.max(0, Number(novaChave.venda || 0)),
       vendas_total: itemExistente ? Number(itemExistente.vendas_total || 0) : 0,
       unidade: editandoEstoqueId ? (itemExistente?.unidade || unidadeOperacional) : unidadeOperacional
     };
@@ -872,7 +879,7 @@ export default function App() {
     setEditandoEstoqueId(null);
     toggleForm('estoque', false);
     mostrarToast('Estoque atualizado!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const iniciarEdicaoEstoque = (item) => {
@@ -898,14 +905,14 @@ export default function App() {
   const alterarQtdEstoque = async (item, delta) => {
     const novaQtd = Math.max(0, Number(item.qtd) + delta);
     await supabase.from('estoque').update({ qtd: novaQtd }).eq('id', item.id);
-    carregarDados();
+    carregarDados(true);
   };
 
   const excluirItemEstoque = async (id) => {
     if (!window.confirm('Remover este item do estoque?')) return;
     await supabase.from('estoque').delete().eq('id', id);
     mostrarToast('Item removido do estoque.');
-    carregarDados();
+    carregarDados(true);
   };
 
   const itensEstoqueBaixo = estoqueUnidade.filter((i) => Number(i.qtd) <= Number(i.minimo || 3));
@@ -942,7 +949,7 @@ export default function App() {
     const novoMat = {
       id: ch.id,
       nome: ch.nome,
-      qtd: Number(itemTempOS.qtd || 1),
+      qtd: Math.max(1, Number(itemTempOS.qtd || 1)),
       custo: Number(ch.custo || 0),
       venda: Number(ch.venda || 0)
     };
@@ -956,8 +963,8 @@ export default function App() {
 
   const criarOS = async (e, encaminharAoFuncionario = false) => {
     if (e) e.preventDefault();
-    if (!novaOS.cliente || !novaOS.desc || !novaOS.valor) {
-      mostrarToast('Preencha Cliente, Descrição e Valor.', 'erro');
+    if (!novaOS.cliente || !novaOS.desc || novaOS.valor === '' || Number(novaOS.valor) < 0) {
+      mostrarToast('Preencha Cliente, Descrição e um Valor válido.', 'erro');
       return;
     }
 
@@ -988,7 +995,7 @@ export default function App() {
       funcionario_nome: funcObj?.nome || '',
       funcionario_tel: funcObj?.tel || '',
       status: 'pendente',
-      data: new Date().toLocaleDateString('pt-BR'),
+      data: hojeStr,
       unidade: unidadeOperacional
     };
 
@@ -1024,7 +1031,7 @@ export default function App() {
     });
     toggleForm('os', false);
     mostrarToast('Ordem de Serviço emitida!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const concluirOS = async (os, formaRecebimento = 'Pix') => {
@@ -1047,7 +1054,7 @@ export default function App() {
       valor: Number(os.valor),
       custo_insumo: Number(os.custo_insumo || 0),
       forma: formaRecebimento,
-      data: new Date().toLocaleDateString('pt-BR'),
+      data: hojeStr,
       timestamp: Date.now(),
       unidade: os.unidade || unidadeOperacional
     };
@@ -1086,14 +1093,14 @@ export default function App() {
     });
 
     mostrarToast('OS concluída e lançada no caixa!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const excluirOS = async (id) => {
     if (!window.confirm('Excluir esta Ordem de Serviço?')) return;
     await supabase.from('ordens_servico').delete().eq('id', id);
     mostrarToast('OS excluída.');
-    carregarDados();
+    carregarDados(true);
   };
 
   // ================= FUNÇÕES DA AGENDA DE SOCORROS =================
@@ -1104,7 +1111,7 @@ export default function App() {
     const novoMat = {
       id: ch.id,
       nome: ch.nome,
-      qtd: Number(itemTempAg.qtd || 1),
+      qtd: Math.max(1, Number(itemTempAg.qtd || 1)),
       custo: Number(ch.custo || 0)
     };
     setNovoAgendamento({ ...novoAgendamento, itens_usados: [...novoAgendamento.itens_usados, novoMat] });
@@ -1134,10 +1141,10 @@ export default function App() {
       tel: (novoAgendamento.tel || '').trim(),
       endereco: novoAgendamento.endereco.trim(),
       servico: novoAgendamento.servico.trim(),
-      data: novoAgendamento.data || new Date().toISOString().split('T')[0],
+      data: novoAgendamento.data || hojeISO,
       hora: novoAgendamento.hora || '14:00',
-      taxa_deslocamento: Number(novoAgendamento.taxa_deslocamento || 0),
-      valor_estimado: Number(novoAgendamento.valor_estimado || 0),
+      taxa_deslocamento: Math.max(0, Number(novoAgendamento.taxa_deslocamento || 0)),
+      valor_estimado: Math.max(0, Number(novoAgendamento.valor_estimado || 0)),
       custo_insumo: custoMateriais,
       itens_usados: novoAgendamento.itens_usados,
       funcionario_nome: funcObj?.nome || '',
@@ -1172,7 +1179,7 @@ export default function App() {
     setNovoAgendamento({ cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '', taxa_deslocamento: 0, valor_estimado: 80, funcionario_id: '', itens_usados: [] });
     toggleForm('agenda', false);
     mostrarToast('Socorro agendado!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const concluirAgendamento = async (ag, formaRecebimento = 'Pix') => {
@@ -1189,7 +1196,7 @@ export default function App() {
       valor: valorTotalSocorro,
       custo_insumo: Number(ag.custo_insumo || 0),
       forma: formaRecebimento,
-      data: new Date().toLocaleDateString('pt-BR'),
+      data: hojeStr,
       timestamp: Date.now(),
       unidade: ag.unidade || unidadeOperacional
     };
@@ -1229,14 +1236,14 @@ export default function App() {
     });
 
     mostrarToast('Socorro finalizado e lançado no caixa!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const excluirAgendamento = async (id) => {
     if (!window.confirm('Excluir este agendamento de socorro?')) return;
     await supabase.from('agendamentos').delete().eq('id', id);
     mostrarToast('Socorro excluído.');
-    carregarDados();
+    carregarDados(true);
   };
 
   // ================= FUNÇÕES DE CLIENTES (CRIAR E EDITAR) =================
@@ -1263,7 +1270,7 @@ export default function App() {
     setNovoCliente({ id: null, nome: '', tel: '', endereco: '', tipo: 'Residencial', obs: '' });
     toggleForm('cliente', false);
     mostrarToast(eraEdicao ? 'Dados do cliente atualizados!' : 'Cliente cadastrado!');
-    carregarDados();
+    carregarDados(true);
   };
 
   const iniciarEdicaoCliente = (cli) => {
@@ -1289,7 +1296,8 @@ export default function App() {
     await supabase.from('clientes').delete().eq('id', id);
     if (clienteHistoricoSelecionado?.id === id) setClienteHistoricoSelecionado(null);
     mostrarToast('Cliente removido.');
-    carregarDados();
+    carregarDados(true);
+  };
   };// ================= FUNÇÕES DO CAIXA, TROCO & FECHAMENTO DIÁRIO =================
   const adicionarTransacaoManual = async (e) => {
     e.preventDefault();
