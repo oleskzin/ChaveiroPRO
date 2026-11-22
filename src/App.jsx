@@ -6,7 +6,7 @@ import {
   MapPin, RefreshCw, ShoppingCart, ArrowUpCircle, ArrowDownCircle, 
   Share2, AlertCircle, X, Check, AlertTriangle, Filter, LayoutDashboard,
   Download, ShieldCheck, Zap, Clock, Award, Calculator, Building2, Settings,
-  CreditCard, UserCheck, Send, FolderClock, UserPlus
+  CreditCard, UserCheck, Send, FolderClock, UserPlus, ChevronUp, ExternalLink, Receipt
 } from 'lucide-react';
 
 export default function App() {
@@ -15,14 +15,70 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [erroConexao, setErroConexao] = useState(null);
 
-  // Configuração das Unidades (editável no app)
-  const [unidadesConfig, setUnidadesConfig] = useState([
-    { id: 'ponto1', nome: 'Ponto 1 (Principal)', endereco: 'Endereço do Ponto 1 - Sepetiba' },
-    { id: 'ponto2', nome: 'Ponto 2 (Filial)', endereco: 'Endereço do Ponto 2 - Sepetiba' }
-  ]);
+  // ================= TOAST NOTIFICATIONS =================
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+  const mostrarToast = (mensagem, tipo = 'sucesso') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ mensagem, tipo });
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+  };
+
+  // ================= CONTROLE DE FORMULÁRIOS COLAPSÁVEIS & COMANDA MOBILE =================
+  const [formAberto, setFormAberto] = useState({
+    os: false,
+    agenda: false,
+    orcamento: false,
+    estoque: false,
+    caixa: false,
+    boleto: false,
+    cliente: false,
+    tabela: false
+  });
+  const toggleForm = (chave, valorForcado = null) => {
+    setFormAberto((prev) => ({ ...prev, [chave]: valorForcado !== null ? valorForcado : !prev[chave] }));
+  };
+  const [comandaMobileAberta, setComandaMobileAberta] = useState(false);
+
+  // ================= TEMA VISUAL POR UNIDADE =================
+  const temaUnidade = unidadeAtiva === 'ponto2'
+    ? {
+        bordaTopo: 'border-t-4 border-t-cyan-500',
+        badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+        botaoAtivo: 'bg-cyan-500 text-slate-950',
+        textoDestaque: 'text-cyan-400',
+        logoBg: 'bg-cyan-500'
+      }
+    : unidadeAtiva === 'todas'
+    ? {
+        bordaTopo: 'border-t-4 border-t-emerald-500',
+        badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+        botaoAtivo: 'bg-emerald-500 text-slate-950',
+        textoDestaque: 'text-emerald-400',
+        logoBg: 'bg-emerald-500'
+      }
+    : {
+        bordaTopo: 'border-t-4 border-t-amber-500',
+        badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+        botaoAtivo: 'bg-amber-500 text-slate-950',
+        textoDestaque: 'text-amber-400',
+        logoBg: 'bg-amber-500'
+      };
+
+  // Configuração das Unidades + Fundo de Troco Fixo (R$ 200 padrão)
+  const [unidadesConfig, setUnidadesConfig] = useState(() => {
+    try {
+      const salvo = localStorage.getItem('luisinho_unidades_config');
+      if (salvo) return JSON.parse(salvo);
+    } catch {}
+    return [
+      { id: 'ponto1', nome: 'Ponto 1 (Principal)', endereco: 'Endereço do Ponto 1 - Sepetiba', fundo_troco: 200 },
+      { id: 'ponto2', nome: 'Ponto 2 (Filial)', endereco: 'Endereço do Ponto 2 - Sepetiba', fundo_troco: 200 }
+    ];
+  });
   const [modalConfigUnidades, setModalConfigUnidades] = useState(false);
 
-  // Lista permanente de Funcionários cadastrados (Salvo no Supabase + LocalStorage)
+  // Lista permanente de Funcionários cadastrados
   const [funcionarios, setFuncionarios] = useState(() => {
     try {
       const salvoLocal = localStorage.getItem('luisinho_funcionarios');
@@ -52,6 +108,8 @@ export default function App() {
   const [descontoPdv, setDescontoPdv] = useState('');
   const [servicoAvulsoDesc, setServicoAvulsoDesc] = useState('');
   const [servicoAvulsoValor, setServicoAvulsoValor] = useState('');
+  const [gerenciandoServicosPdv, setGerenciandoServicosPdv] = useState(false);
+  const [servicoRapidoForm, setServicoRapidoForm] = useState({ id: null, nome: '', valor: '' });
   const [formaPgto, setFormaPgto] = useState('Pix');
   const [taxaCartaoIdPdv, setTaxaCartaoIdPdv] = useState('');
   const [clientePdv, setClientePdv] = useState({ nome: '', tel: '', obs: '' });
@@ -66,7 +124,6 @@ export default function App() {
   const [calcRepassarTaxa, setCalcRepassarTaxa] = useState(false);
   const [calcTaxaId, setCalcTaxaId] = useState('');
   const [calcCliente, setCalcCliente] = useState({ nome: '', tel: '', endereco: '' });
-
   const [novoItemTabela, setNovoItemTabela] = useState({ id: null, grupo: 'servico', nome: '', marca: '', tipo_valor: 'fixo', valor: '' });
 
   // ================= ESTADOS DO ESTOQUE =================
@@ -94,7 +151,7 @@ export default function App() {
   });
   const [itemTempAg, setItemTempAg] = useState({ chave_id: '', qtd: 1 });
 
-  const [novoCliente, setNovoCliente] = useState({ nome: '', tel: '', endereco: '', tipo: 'Residencial', obs: '' });
+  const [novoCliente, setNovoCliente] = useState({ id: null, nome: '', tel: '', endereco: '', tipo: 'Residencial', obs: '' });
   const [buscaClienteCrm, setBuscaClienteCrm] = useState('');
   const [clienteHistoricoSelecionado, setClienteHistoricoSelecionado] = useState(null);
 
@@ -104,7 +161,7 @@ export default function App() {
   const [novaConta, setNovaConta] = useState({ desc: '', valor: '', vencimento: '' });
   const [filtroPeriodoCaixa, setFiltroPeriodoCaixa] = useState('hoje');
 
-  // ================= ESTADOS DO ORÇAMENTO (COM FICHA COMPLETA DO CLIENTE E STANDBY) =================
+  // ================= ESTADOS DO ORÇAMENTO =================
   const [orcamento, setOrcamento] = useState({
     id: null,
     cliente: '',
@@ -119,9 +176,12 @@ export default function App() {
 
   const unidadeOperacional = unidadeAtiva === 'todas' ? 'ponto1' : unidadeAtiva;
   const infoUnidadeAtual = unidadesConfig.find((u) => u.id === unidadeOperacional) || unidadesConfig[0];
-
-  // Funcionário padrão da unidade ativa
   const funcionarioPadraoUnidade = funcionarios.find((f) => f.unidade === unidadeOperacional) || funcionarios[0] || null;
+
+  // Fundo de troco da unidade selecionada (ou soma dos 2 pontos se estiver em 'todas')
+  const fundoTrocoAtual = unidadeAtiva === 'todas'
+    ? unidadesConfig.reduce((acc, u) => acc + Number(u.fundo_troco ?? 200), 0)
+    : Number(infoUnidadeAtual?.fundo_troco ?? 200);
 
   // Carregar dados do Supabase
   const carregarDados = async () => {
@@ -160,7 +220,22 @@ export default function App() {
       if (ag) setAgendamentos(ag);
       if (cli) setClientes(cli);
       if (tab) setTabelaPrecos(tab);
-      if (uni && uni.length > 0) setUnidadesConfig(uni);
+      if (uni && uni.length > 0) {
+        const localSalvo = (() => {
+          try { return JSON.parse(localStorage.getItem('luisinho_unidades_config') || '[]'); } catch { return []; }
+        })();
+        const mesclado = uni.map((u) => {
+          const itemLocal = localSalvo.find((l) => l.id === u.id);
+          return {
+            ...u,
+            fundo_troco: u.fundo_troco !== undefined && u.fundo_troco !== null
+              ? Number(u.fundo_troco)
+              : Number(itemLocal?.fundo_troco ?? 200)
+          };
+        });
+        setUnidadesConfig(mesclado);
+        localStorage.setItem('luisinho_unidades_config', JSON.stringify(mesclado));
+      }
       if (orcs) setOrcamentosSalvos(orcs);
       if (funcs && funcs.length > 0) {
         setFuncionarios(funcs);
@@ -177,7 +252,7 @@ export default function App() {
   useEffect(() => {
     carregarDados();
     const canal = supabase
-      .channel('sincronizacao_luisinho_v21')
+      .channel('sincronizacao_luisinho_v32')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
         carregarDados();
       })
@@ -200,6 +275,7 @@ export default function App() {
         finalizarVendaPdv();
       } else if (e.key === 'Escape') {
         setTransacaoEditando(null);
+        setComandaMobileAberta(false);
         cancelarEdicaoEstoque();
       }
     };
@@ -207,11 +283,32 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   });
 
-  // ================= HELPER DEFINITIVO: ABRIR WHATSAPP SEM CORTAR TEXTO NEM CORROMPER CARACTERES =================
+  // ================= HELPER: ABRIR PORTAL NFS-e (GOVERNO) + COPIAR DADOS =================
+  const abrirPortalNFSe = async (dadosServico = null) => {
+    const urlNFSe = 'https://www.nfse.gov.br/EmissorNacional/';
+    if (dadosServico) {
+      const resumo = [
+        `Cliente: ${dadosServico.cliente || 'Consumidor'}`,
+        `Servico: ${dadosServico.desc || 'Servicos de chaveiro'}`,
+        `Valor: R$ ${Number(dadosServico.valor || 0).toFixed(2)}`
+      ].join(' | ');
+      try {
+        await navigator.clipboard.writeText(resumo);
+        mostrarToast('Dados do serviço copiados! Abrindo Portal NFS-e...');
+      } catch {
+        mostrarToast('Abrindo Portal Nacional da NFS-e...');
+      }
+    } else {
+      mostrarToast('Abrindo Portal Nacional da NFS-e...');
+    }
+    window.open(urlNFSe, '_blank');
+  };
+
+  // ================= HELPER DEFINITIVO: ABRIR WHATSAPP =================
   const abrirWhatsAppSeguro = (telefone, textoMensagem) => {
     const numeroLimpo = (telefone || '').replace(/\D/g, '');
     if (!numeroLimpo) {
-      alert('Informe um número de WhatsApp com DDD válido.');
+      mostrarToast('Informe um WhatsApp com DDD válido.', 'erro');
       return;
     }
     const numeroComDDI = numeroLimpo.startsWith('55') && numeroLimpo.length >= 12 ? numeroLimpo : `55${numeroLimpo}`;
@@ -291,15 +388,14 @@ export default function App() {
     abrirWhatsAppSeguro(dados.tel, linhas.join('\n'));
   };
 
-  // ================= HELPER: ENVIAR FICHA COMPLETA DA OS/SOCORRO PARA O FUNCIONÁRIO =================
+  // ================= HELPER: ENVIAR FICHA COMPLETA PARA O FUNCIONÁRIO =================
   const enviarDiretoParaFuncionario = (tipo, registro) => {
     const uniObj = unidadesConfig.find((u) => u.id === (registro.unidade || unidadeOperacional)) || infoUnidadeAtual;
-
     const telFunc = registro.funcionario_tel || funcionarioPadraoUnidade?.tel || '';
     const nomeFunc = registro.funcionario_nome || funcionarioPadraoUnidade?.nome || 'Funcionario';
 
     if (!telFunc) {
-      alert('Cadastre o nome e o WhatsApp do seu funcionário clicando no botão "Equipe / Lojas" no topo da tela (você só precisa fazer isso uma única vez!).');
+      mostrarToast('Cadastre o WhatsApp do funcionário em "Equipe / Lojas".', 'erro');
       setModalConfigUnidades(true);
       return;
     }
@@ -385,6 +481,7 @@ export default function App() {
     localStorage.setItem('luisinho_funcionarios', JSON.stringify(novaLista));
     await supabase.from('funcionarios').upsert([itemFunc]);
     setNovoFuncionario({ nome: '', tel: '', unidade: unidadeOperacional });
+    mostrarToast('Funcionário salvo com sucesso!');
   };
 
   const removerFuncionario = async (id) => {
@@ -393,14 +490,25 @@ export default function App() {
     setFuncionarios(novaLista);
     localStorage.setItem('luisinho_funcionarios', JSON.stringify(novaLista));
     await supabase.from('funcionarios').delete().eq('id', id);
+    mostrarToast('Funcionário removido.');
   };
 
   const salvarConfigUnidades = async (e) => {
     e.preventDefault();
+    localStorage.setItem('luisinho_unidades_config', JSON.stringify(unidadesConfig));
     for (const u of unidadesConfig) {
-      await supabase.from('unidades_config').upsert([{ id: u.id, nome: u.nome, endereco: u.endereco }]);
+      const { error } = await supabase.from('unidades_config').upsert([{
+        id: u.id,
+        nome: u.nome,
+        endereco: u.endereco,
+        fundo_troco: Number(u.fundo_troco || 0)
+      }]);
+      if (error) {
+        await supabase.from('unidades_config').upsert([{ id: u.id, nome: u.nome, endereco: u.endereco }]);
+      }
     }
     setModalConfigUnidades(false);
+    mostrarToast('Unidades e Fundo de Troco atualizados!');
     carregarDados();
   };
 
@@ -414,6 +522,7 @@ export default function App() {
     } else {
       setCarrinho([...carrinho, { ...item, precoEditado: Number(item.venda), qtdVenda: 1, tipoItem: 'estoque' }]);
     }
+    mostrarToast(`+1 ${item.nome} na comanda`);
   };
 
   const adicionarServicoAvulsoPdv = (descCustom = null, valorCustom = null) => {
@@ -435,6 +544,32 @@ export default function App() {
       setServicoAvulsoDesc('');
       setServicoAvulsoValor('');
     }
+    mostrarToast(`Serviço "${descFinal}" incluído`);
+  };
+
+  const salvarServicoRapidoPdv = async (e) => {
+    e.preventDefault();
+    if (!servicoRapidoForm.nome.trim() || servicoRapidoForm.valor === '') {
+      mostrarToast('Preencha o nome e o valor do serviço.', 'erro');
+      return;
+    }
+    const item = {
+      id: servicoRapidoForm.id || Date.now(),
+      grupo: 'servico',
+      nome: servicoRapidoForm.nome.trim(),
+      marca: 'Geral',
+      tipo_valor: 'fixo',
+      valor: Number(servicoRapidoForm.valor)
+    };
+    const { error } = await supabase.from('tabela_precos').upsert([item]);
+    if (error) {
+      mostrarToast('Erro ao salvar serviço: ' + error.message, 'erro');
+      return;
+    }
+    const eraEdicao = Boolean(servicoRapidoForm.id);
+    setServicoRapidoForm({ id: null, nome: '', valor: '' });
+    mostrarToast(eraEdicao ? 'Serviço rápido atualizado!' : 'Novo serviço rápido salvo!');
+    carregarDados();
   };
 
   const alterarPrecoItemCarrinho = (idx, novoPreco) => {
@@ -450,6 +585,7 @@ export default function App() {
     setCarrinho(copia);
   };
 
+  const totalItensCarrinho = carrinho.reduce((acc, i) => acc + Number(i.qtdVenda), 0);
   const subtotalCarrinho = carrinho.reduce((acc, i) => acc + Number(i.precoEditado || 0) * Number(i.qtdVenda), 0);
   const valorDescontoPdv = Number(descontoPdv || 0);
   const totalLiquidoPdv = Math.max(0, subtotalCarrinho - valorDescontoPdv);
@@ -487,7 +623,7 @@ export default function App() {
     setTransacoes((prev) => [novaTrans, ...prev]);
     const { error } = await supabase.from('transacoes').insert([novaTrans]);
     if (error) {
-      alert('Erro ao salvar venda: ' + error.message);
+      mostrarToast('Erro ao salvar venda: ' + error.message, 'erro');
       setLoading(false);
       return;
     }
@@ -519,6 +655,8 @@ export default function App() {
     setCarrinho([]);
     setDescontoPdv('');
     setClientePdv({ nome: '', tel: '', obs: '' });
+    setComandaMobileAberta(false);
+    mostrarToast(`Venda de R$ ${totalLiquidoPdv.toFixed(2)} registrada!`);
     await carregarDados();
     setLoading(false);
   };
@@ -564,9 +702,12 @@ export default function App() {
   };
 
   const salvarSimuladorEmStandby = async (enviarNoZap = false) => {
-    if (totalFinalSimulador <= 0) return;
+    if (totalFinalSimulador <= 0) {
+      mostrarToast('Selecione um serviço ou peça primeiro.', 'erro');
+      return;
+    }
     if (enviarNoZap && !calcCliente.tel.replace(/\D/g, '')) {
-      alert('Digite o WhatsApp do cliente com DDD para enviar a cotação.');
+      mostrarToast('Digite o WhatsApp do cliente com DDD.', 'erro');
       return;
     }
 
@@ -618,10 +759,9 @@ export default function App() {
       ].join('\n');
 
       abrirWhatsAppSeguro(calcCliente.tel, texto);
-    } else {
-      alert('Cotação salva na fila de Orçamentos em Standby!');
     }
 
+    mostrarToast('Cotação salva na fila de Standby!');
     setCalcCliente({ nome: '', tel: '', endereco: '' });
     carregarDados();
   };
@@ -652,6 +792,7 @@ export default function App() {
       valor: totalFinalSimulador.toFixed(2),
       itens_usados: itensIniciais
     });
+    toggleForm('os', true);
     setAbaAtiva('os');
   };
 
@@ -668,12 +809,14 @@ export default function App() {
     };
     await supabase.from('tabela_precos').upsert([item]);
     setNovoItemTabela({ id: null, grupo: 'servico', nome: '', marca: '', tipo_valor: 'fixo', valor: '' });
+    mostrarToast('Item salvo na tabela de preços!');
     carregarDados();
   };
 
   const excluirItemTabelaPrecos = async (id) => {
     if (!window.confirm('Excluir este item da tabela?')) return;
     await supabase.from('tabela_precos').delete().eq('id', id);
+    mostrarToast('Item removido da tabela.');
     carregarDados();
   };
 
@@ -698,12 +841,14 @@ export default function App() {
 
     const { error } = await supabase.from('estoque').upsert([novoItem]);
     if (error) {
-      alert('Erro ao salvar no estoque: ' + error.message);
+      mostrarToast('Erro ao salvar no estoque: ' + error.message, 'erro');
       return;
     }
 
     setNovaChave({ id: '', nome: '', cat: 'Yale / Comum', qtd: 10, minimo: 3, custo: '', venda: '' });
     setEditandoEstoqueId(null);
+    toggleForm('estoque', false);
+    mostrarToast('Estoque atualizado!');
     carregarDados();
   };
 
@@ -718,6 +863,7 @@ export default function App() {
       custo: item.custo || 0,
       venda: item.venda || 0
     });
+    toggleForm('estoque', true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -735,6 +881,7 @@ export default function App() {
   const excluirItemEstoque = async (id) => {
     if (!window.confirm('Remover este item do estoque?')) return;
     await supabase.from('estoque').delete().eq('id', id);
+    mostrarToast('Item removido do estoque.');
     carregarDados();
   };
 
@@ -764,7 +911,7 @@ export default function App() {
   const capitalTotalEstoque = estoqueUnidade.reduce((acc, i) => acc + Number(i.custo || 0) * Number(i.qtd || 0), 0);
   const potencialVendaEstoque = estoqueUnidade.reduce((acc, i) => acc + Number(i.venda || 0) * Number(i.qtd || 0), 0);
 
-  // ================= FUNÇÕES DE ORDENS DE SERVIÇO (COM FUNCIONÁRIO SALVO E MULTI-ITENS) =================
+  // ================= FUNÇÕES DE ORDENS DE SERVIÇO =================
   const adicionarMaterialNaOS = () => {
     if (!itemTempOS.chave_id) return;
     const ch = estoqueUnidade.find((e) => e.id === itemTempOS.chave_id);
@@ -787,7 +934,7 @@ export default function App() {
   const criarOS = async (e, encaminharAoFuncionario = false) => {
     if (e) e.preventDefault();
     if (!novaOS.cliente || !novaOS.desc || !novaOS.valor) {
-      alert('Preencha o Nome do Cliente, a Descrição do Serviço e o Valor Total.');
+      mostrarToast('Preencha Cliente, Descrição e Valor.', 'erro');
       return;
     }
 
@@ -852,6 +999,8 @@ export default function App() {
       funcionario_id: '',
       itens_usados: []
     });
+    toggleForm('os', false);
+    mostrarToast('Ordem de Serviço emitida!');
     carregarDados();
   };
 
@@ -908,12 +1057,14 @@ export default function App() {
       unidade: os.unidade || unidadeOperacional
     });
 
+    mostrarToast('OS concluída e lançada no caixa!');
     carregarDados();
   };
 
   const excluirOS = async (id) => {
     if (!window.confirm('Excluir esta Ordem de Serviço?')) return;
     await supabase.from('ordens_servico').delete().eq('id', id);
+    mostrarToast('OS excluída.');
     carregarDados();
   };
 
@@ -939,7 +1090,7 @@ export default function App() {
   const criarAgendamento = async (e, encaminharAoFuncionario = false) => {
     if (e) e.preventDefault();
     if (!novoAgendamento.cliente || !novoAgendamento.endereco || !novoAgendamento.servico) {
-      alert('Preencha Cliente, Endereço e Serviço.');
+      mostrarToast('Preencha Cliente, Endereço e Serviço.', 'erro');
       return;
     }
 
@@ -991,6 +1142,8 @@ export default function App() {
     }
 
     setNovoAgendamento({ cliente: '', tel: '', endereco: '', servico: '', data: '', hora: '', taxa_deslocamento: 0, valor_estimado: 80, funcionario_id: '', itens_usados: [] });
+    toggleForm('agenda', false);
+    mostrarToast('Socorro agendado!');
     carregarDados();
   };
 
@@ -1042,33 +1195,67 @@ export default function App() {
       unidade: ag.unidade || unidadeOperacional
     });
 
+    mostrarToast('Socorro finalizado e lançado no caixa!');
     carregarDados();
   };
 
   const excluirAgendamento = async (id) => {
     if (!window.confirm('Excluir este agendamento de socorro?')) return;
     await supabase.from('agendamentos').delete().eq('id', id);
+    mostrarToast('Socorro excluído.');
     carregarDados();
   };
 
-  // ================= FUNÇÕES DE CLIENTES =================
-  const criarCliente = async (e) => {
+  // ================= FUNÇÕES DE CLIENTES (CRIAR E EDITAR) =================
+  const salvarCliente = async (e) => {
     e.preventDefault();
-    if (!novoCliente.nome) return;
-    const itemCli = { id: Date.now(), ...novoCliente };
-    const { error } = await supabase.from('clientes').insert([itemCli]);
+    if (!novoCliente.nome.trim()) return;
+
+    const itemCli = {
+      id: novoCliente.id || Date.now(),
+      nome: novoCliente.nome.trim(),
+      tel: (novoCliente.tel || '').trim(),
+      endereco: (novoCliente.endereco || '').trim(),
+      tipo: novoCliente.tipo || 'Residencial',
+      obs: (novoCliente.obs || '').trim()
+    };
+
+    const { error } = await supabase.from('clientes').upsert([itemCli]);
     if (error) {
-      alert('Erro ao salvar cliente: ' + error.message);
+      mostrarToast('Erro ao salvar cliente: ' + error.message, 'erro');
       return;
     }
-    setNovoCliente({ nome: '', tel: '', endereco: '', tipo: 'Residencial', obs: '' });
+
+    const eraEdicao = Boolean(novoCliente.id);
+    setNovoCliente({ id: null, nome: '', tel: '', endereco: '', tipo: 'Residencial', obs: '' });
+    toggleForm('cliente', false);
+    mostrarToast(eraEdicao ? 'Dados do cliente atualizados!' : 'Cliente cadastrado!');
     carregarDados();
+  };
+
+  const iniciarEdicaoCliente = (cli) => {
+    setNovoCliente({
+      id: cli.id,
+      nome: cli.nome || '',
+      tel: cli.tel || '',
+      endereco: cli.endereco || '',
+      tipo: cli.tipo || 'Residencial',
+      obs: cli.obs || ''
+    });
+    toggleForm('cliente', true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelarEdicaoCliente = () => {
+    setNovoCliente({ id: null, nome: '', tel: '', endereco: '', tipo: 'Residencial', obs: '' });
+    toggleForm('cliente', false);
   };
 
   const excluirCliente = async (id) => {
     if (!window.confirm('Excluir cliente?')) return;
     await supabase.from('clientes').delete().eq('id', id);
     if (clienteHistoricoSelecionado?.id === id) setClienteHistoricoSelecionado(null);
+    mostrarToast('Cliente removido.');
     carregarDados();
   };
 
@@ -1090,10 +1277,12 @@ export default function App() {
 
     const { error } = await supabase.from('transacoes').insert([itemTrans]);
     if (error) {
-      alert('Erro ao lançar no caixa: ' + error.message);
+      mostrarToast('Erro ao lançar no caixa: ' + error.message, 'erro');
       return;
     }
     setNovaTransacao({ tipo: 'saida', desc: '', valor: '', forma: 'Pix' });
+    toggleForm('caixa', false);
+    mostrarToast('Lançamento registrado no caixa!');
     carregarDados();
   };
 
@@ -1108,21 +1297,24 @@ export default function App() {
 
     const { error } = await supabase.from('transacoes').update(atualizada).eq('id', transacaoEditando.id);
     if (error) {
-      alert('Erro ao editar movimentação: ' + error.message);
+      mostrarToast('Erro ao editar movimentação.', 'erro');
       return;
     }
     setTransacaoEditando(null);
+    mostrarToast('Movimentação atualizada!');
     carregarDados();
   };
 
   const quitarPendenciaReceber = async (trans) => {
     await supabase.from('transacoes').update({ forma: 'Pix' }).eq('id', trans.id);
+    mostrarToast('Fiado marcado como recebido!');
     carregarDados();
   };
 
   const excluirTransacao = async (id) => {
     if (!window.confirm('Deseja excluir este lançamento do caixa?')) return;
     await supabase.from('transacoes').delete().eq('id', id);
+    mostrarToast('Lançamento excluído.');
     carregarDados();
   };
 
@@ -1139,10 +1331,12 @@ export default function App() {
     };
     const { error } = await supabase.from('contas_pagar').insert([itemConta]);
     if (error) {
-      alert('Erro ao salvar boleto: ' + error.message);
+      mostrarToast('Erro ao salvar boleto.', 'erro');
       return;
     }
     setNovaConta({ desc: '', valor: '', vencimento: '' });
+    toggleForm('boleto', false);
+    mostrarToast('Boleto agendado no calendário!');
     carregarDados();
   };
 
@@ -1163,18 +1357,23 @@ export default function App() {
         unidade: conta.unidade || unidadeOperacional
       };
       await supabase.from('transacoes').insert([novaTrans]);
+      mostrarToast('Boleto pago e debitado do caixa!');
+    } else {
+      mostrarToast('Boleto quitado na agenda (sem mexer no caixa)!');
     }
     carregarDados();
   };
 
   const reabrirBoleto = async (conta) => {
     await supabase.from('contas_pagar').update({ status: 'pendente' }).eq('id', conta.id);
+    mostrarToast('Boleto reaberto.');
     carregarDados();
   };
 
   const excluirContaPagar = async (id) => {
     if (!window.confirm('Excluir este boleto da agenda?')) return;
     await supabase.from('contas_pagar').delete().eq('id', id);
+    mostrarToast('Boleto excluído.');
     carregarDados();
   };
 
@@ -1189,6 +1388,7 @@ export default function App() {
     link.href = url;
     link.download = `luisinho_chaveiro_${unidadeAtiva}_${filtroPeriodoCaixa}.csv`;
     link.click();
+    mostrarToast('Planilha CSV baixada!');
   };
 
   const transacoesFiltradas = transacoesUnidade.filter((t) => {
@@ -1221,9 +1421,11 @@ export default function App() {
 
   const entradasPix = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && t.forma.includes('Pix')).reduce((acc, t) => acc + Number(t.valor), 0);
   const entradasDinheiro = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && t.forma.includes('Dinheiro')).reduce((acc, t) => acc + Number(t.valor), 0);
+  const saidasDinheiro = transacoesFiltradas.filter((t) => t.tipo === 'saida' && t.forma.includes('Dinheiro')).reduce((acc, t) => acc + Number(t.valor), 0);
+  const totalGavetaFisica = fundoTrocoAtual + entradasDinheiro - saidasDinheiro;
   const entradasCartao = transacoesFiltradas.filter((t) => t.tipo === 'entrada' && t.forma.includes('Cartão')).reduce((acc, t) => acc + Number(t.valor), 0);
 
-  // ================= FUNÇÕES DO ORÇAMENTO (COM FICHA COMPLETA E FILA DE STANDBY) =================
+  // ================= FUNÇÕES DO ORÇAMENTO =================
   const adicionarLinhaOrcamento = () => {
     setOrcamento({ ...orcamento, itens: [...orcamento.itens, { desc: '', qtd: 1, valor: 0 }] });
   };
@@ -1271,11 +1473,11 @@ export default function App() {
   const salvarOrcamentoStandby = async (enviarZap = false) => {
     const itensValidos = orcamento.itens.filter((i) => i.desc.trim() !== '');
     if (itensValidos.length === 0 || totalOrcamento <= 0) {
-      alert('Adicione pelo menos 1 item com descrição e valor no orçamento.');
+      mostrarToast('Adicione pelo menos 1 item com valor.', 'erro');
       return;
     }
     if (enviarZap && !(orcamento.tel || '').replace(/\D/g, '')) {
-      alert('Preencha o WhatsApp do cliente com DDD antes de enviar.');
+      mostrarToast('Preencha o WhatsApp do cliente com DDD.', 'erro');
       return;
     }
 
@@ -1296,7 +1498,6 @@ export default function App() {
 
     const { error } = await supabase.from('orcamentos').upsert([registroOrcCompleto]);
     if (error) {
-      // Fallback caso o usuário ainda não tenha rodado o alter table das 3 novas colunas no Supabase
       const obsComDadosExtras = [
         registroOrcCompleto.endereco ? `End: ${registroOrcCompleto.endereco}` : '',
         registroOrcCompleto.tipo_cliente ? `Tipo: ${registroOrcCompleto.tipo_cliente}` : '',
@@ -1342,6 +1543,8 @@ export default function App() {
       itens: [{ desc: '', qtd: 1, valor: 0 }],
       obs: 'Validade: 7 dias. Garantia de 90 dias.'
     });
+    toggleForm('orcamento', false);
+    mostrarToast('Orçamento salvo em Standby!');
     carregarDados();
   };
 
@@ -1357,6 +1560,7 @@ export default function App() {
       itens: Array.isArray(orc.itens) && orc.itens.length > 0 ? orc.itens : [{ desc: '', qtd: 1, valor: 0 }],
       obs: orc.obs || 'Validade: 7 dias. Garantia de 90 dias.'
     });
+    toggleForm('orcamento', true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1403,6 +1607,7 @@ export default function App() {
     if (orc.cliente) {
       await garantirCadastroCliente(orc.cliente, orc.tel, enderecoEscolhido, `Orcamento aprovado -> OS: ${resumoItens}`);
     }
+    mostrarToast('Orçamento aprovado e convertido em OS!');
     setAbaAtiva('os');
     carregarDados();
   };
@@ -1410,6 +1615,7 @@ export default function App() {
   const excluirOrcamentoSalvo = async (id) => {
     if (!window.confirm('Remover este orçamento da lista?')) return;
     await supabase.from('orcamentos').delete().eq('id', id);
+    mostrarToast('Orçamento excluído.');
     carregarDados();
   };
 
@@ -1436,20 +1642,197 @@ export default function App() {
     { id: 'clientes', label: 'Clientes', icon: Users },
   ];
 
+  // Bloco reutilizável da Comanda do PDV
+  const renderComandaPDV = () => (
+    <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className={`font-bold flex items-center gap-2 ${temaUnidade.textoDestaque}`}>
+            <ShoppingCart size={18} /> Comanda / Nota ({totalItensCarrinho})
+          </h2>
+          {comandaMobileAberta && (
+            <button onClick={() => setComandaMobileAberta(false)} className="lg:hidden text-slate-400 p-1">
+              <X size={20} />
+            </button>
+          )}
+        </div>
+
+        <div className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-400 uppercase">Cliente (Salva automático)</span>
+            {clientes.length > 0 && (
+              <select
+                onChange={(e) => {
+                  const c = clientes.find((cli) => cli.id.toString() === e.target.value);
+                  if (c) setClientePdv({ ...clientePdv, nome: c.nome, tel: c.tel || '' });
+                }}
+                defaultValue=""
+                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-300 max-w-[140px]"
+              >
+                <option value="" disabled>Puxar salvo...</option>
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          <input
+            type="text"
+            placeholder="Nome / Referência (Ex: Seu Paulinho)"
+            value={clientePdv.nome}
+            onChange={(e) => setClientePdv({ ...clientePdv, nome: e.target.value })}
+            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              type="tel"
+              placeholder="WhatsApp (com DDD)"
+              value={clientePdv.tel}
+              onChange={(e) => setClientePdv({ ...clientePdv, tel: e.target.value })}
+              className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+            />
+            <input
+              type="text"
+              placeholder="Obs / Placa / Fechadura"
+              value={clientePdv.obs}
+              onChange={(e) => setClientePdv({ ...clientePdv, obs: e.target.value })}
+              className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+            />
+          </div>
+        </div>
+
+        {carrinho.length === 0 ? (
+          <p className="text-slate-500 text-xs py-6 text-center">Toque nas chaves ou serviços para montar a nota.</p>
+        ) : (
+          <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+            {carrinho.map((item, idx) => (
+              <div key={idx} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold text-xs text-slate-100">{item.nome}</p>
+                  <button
+                    onClick={() => setCarrinho(carrinho.filter((_, i) => i !== idx))}
+                    className="text-red-400 hover:text-red-300 p-0.5"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => alterarQtdItemCarrinho(idx, -1)} className="bg-slate-800 px-2.5 py-1 rounded font-bold">-</button>
+                    <span className="px-1.5 font-bold">{item.qtdVenda}x</span>
+                    <button type="button" onClick={() => alterarQtdItemCarrinho(idx, 1)} className="bg-slate-800 px-2.5 py-1 rounded font-bold">+</button>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-slate-400 text-[11px]">Un R$:</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={item.precoEditado}
+                      onChange={(e) => alterarPrecoItemCarrinho(idx, e.target.value)}
+                      className="w-20 bg-slate-900 border border-amber-500/40 rounded px-2 py-1 text-xs font-bold text-amber-400 text-right"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-slate-800 pt-3 space-y-3">
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="text-slate-400">Desconto na venda (R$):</span>
+          <input
+            type="number"
+            step="0.01"
+            placeholder="0,00"
+            value={descontoPdv}
+            onChange={(e) => setDescontoPdv(e.target.value)}
+            className="w-24 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-right text-red-400 font-bold"
+          />
+        </div>
+
+        <div className="flex justify-between text-lg font-bold">
+          <span>Total Final:</span>
+          <span className="text-emerald-400">R$ {totalLiquidoPdv.toFixed(2)}</span>
+        </div>
+
+        <div className="space-y-2">
+          <select
+            value={formaPgto}
+            onChange={(e) => setFormaPgto(e.target.value)}
+            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+          >
+            <option>Pix</option>
+            <option>Dinheiro</option>
+            <option>Cartão de Débito</option>
+            <option>Cartão de Crédito</option>
+            <option>A Receber (Fiado)</option>
+          </select>
+
+          {formaPgto.includes('Cartão') && (
+            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
+              <label className="text-[11px] text-amber-400 font-semibold flex items-center gap-1">
+                <CreditCard size={12} /> Modalidade / Parcelas da Maquininha:
+              </label>
+              <select
+                value={taxaCartaoIdPdv}
+                onChange={(e) => setTaxaCartaoIdPdv(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs"
+              >
+                <option value="">Sem desconto de taxa (0%)</option>
+                {taxasCartaoDisponiveis.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nome} — Taxa: {t.valor}% (-R$ {((totalLiquidoPdv * Number(t.valor)) / 100).toFixed(2)})
+                  </option>
+                ))}
+              </select>
+              {valorTaxaMaquininhaPdv > 0 && (
+                <p className="text-[11px] text-slate-400">
+                  Você recebe líquido: <strong className="text-emerald-400">R$ {(totalLiquidoPdv - valorTaxaMaquininhaPdv).toFixed(2)}</strong>
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={finalizarVendaPdv}
+          disabled={carrinho.length === 0 || loading}
+          className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold py-3.5 rounded-xl text-sm transition shadow"
+        >
+          Confirmar Venda & Gerar Comprovante
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col pb-24 md:pb-8">
-      {/* CABEÇALHO COM SELETOR DE UNIDADES + BOTÃO DE EQUIPE/FUNCIONÁRIOS */}
+    <div className={`min-h-screen bg-slate-950 text-slate-100 flex flex-col pb-32 md:pb-8 ${temaUnidade.bordaTopo}`}>
+      {/* NOTIFICAÇÃO TOAST FLUTUANTE */}
+      {toast && (
+        <div className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl shadow-2xl border text-xs font-bold flex items-center gap-2 transition-all ${
+          toast.tipo === 'erro'
+            ? 'bg-red-950 border-red-500 text-red-200'
+            : 'bg-emerald-950 border-emerald-500 text-emerald-200'
+        }`}>
+          {toast.tipo === 'erro' ? <AlertCircle size={15} /> : <CheckCircle size={15} />}
+          <span>{toast.mensagem}</span>
+        </div>
+      )}
+
+      {/* CABEÇALHO COM COR DINÂMICA POR UNIDADE */}
       <header className="bg-slate-900 border-b border-slate-800 px-3 py-2.5 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <div className="bg-amber-500 p-2 rounded-lg text-slate-950 font-bold shrink-0">
+            <div className={`${temaUnidade.logoBg} p-2 rounded-lg text-slate-950 font-bold shrink-0 transition-colors`}>
               <Wrench size={18} />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-bold text-base sm:text-lg leading-tight text-amber-400">Luisinho Chaveiro</h1>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-1.5 py-0.5 rounded font-mono">
-                  v2.1
+                <h1 className={`font-bold text-base sm:text-lg leading-tight ${temaUnidade.textoDestaque}`}>Luisinho Chaveiro</h1>
+                <span className={`text-[10px] border px-1.5 py-0.5 rounded font-mono ${temaUnidade.badge}`}>
+                  v3.2
                 </span>
               </div>
               {erroConexao ? (
@@ -1457,8 +1840,8 @@ export default function App() {
                   <AlertCircle size={11} /> {erroConexao}
                 </span>
               ) : (
-                <span className="text-[11px] text-emerald-400 block truncate max-w-[200px] sm:max-w-xs">
-                  ● {unidadeAtiva === 'todas' ? 'Visão Consolidada (2 Pontos)' : infoUnidadeAtual.endereco}
+                <span className="text-[11px] text-slate-400 block truncate max-w-[200px] sm:max-w-xs">
+                  {unidadeAtiva === 'todas' ? 'Visão Consolidada (2 Pontos)' : infoUnidadeAtual.endereco}
                 </span>
               )}
             </div>
@@ -1471,7 +1854,9 @@ export default function App() {
                   key={u.id}
                   onClick={() => setUnidadeAtiva(u.id)}
                   className={`px-2.5 py-1 rounded-md text-xs font-bold transition ${
-                    unidadeAtiva === u.id ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
+                    unidadeAtiva === u.id
+                      ? (u.id === 'ponto2' ? 'bg-cyan-500 text-slate-950' : 'bg-amber-500 text-slate-950')
+                      : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   {u.nome.split(' ')[0]} {u.nome.split(' ')[1]}
@@ -1489,8 +1874,8 @@ export default function App() {
 
             <button
               onClick={() => setModalConfigUnidades(true)}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 text-amber-400 text-xs font-bold flex items-center gap-1"
-              title="Cadastrar Funcionários e Endereços das Unidades"
+              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1"
+              title="Cadastrar Funcionários, Endereços e Fundo de Troco"
             >
               <Settings size={14} /> Equipe / Lojas
             </button>
@@ -1505,13 +1890,13 @@ export default function App() {
         </div>
       </header>
 
-      {/* MODAL PARA CADASTRAR FUNCIONÁRIOS FIXOS E ENDEREÇOS DAS LOJAS */}
+      {/* MODAL PARA CADASTRAR FUNCIONÁRIOS, ENDEREÇOS E FUNDO DE TROCO FIXO */}
       {modalConfigUnidades && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 max-w-lg w-full space-y-5 my-8">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
               <h3 className="font-bold text-amber-400 flex items-center gap-2">
-                <UserCheck size={18} /> Equipe de Funcionários & Endereços
+                <UserCheck size={18} /> Equipe, Endereços & Fundo de Troco
               </h3>
               <button type="button" onClick={() => setModalConfigUnidades(false)} className="text-slate-400 hover:text-white">
                 <X size={20} />
@@ -1576,22 +1961,38 @@ export default function App() {
 
             <form onSubmit={salvarConfigUnidades} className="space-y-3 border-t border-slate-800 pt-4">
               <h4 className="text-xs font-bold uppercase text-amber-400">
-                2. Endereços das Unidades (Saem no Comprovante)
+                2. Endereços & Fundo de Troco Fixo por Unidade
               </h4>
               {unidadesConfig.map((uni, idx) => (
                 <div key={uni.id} className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
                   <span className="text-xs font-bold text-amber-400 uppercase">{uni.id}</span>
-                  <input
-                    type="text"
-                    placeholder="Nome da Unidade"
-                    value={uni.nome}
-                    onChange={(e) => {
-                      const copia = [...unidadesConfig];
-                      copia[idx].nome = e.target.value;
-                      setUnidadesConfig(copia);
-                    }}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Nome da Unidade"
+                      value={uni.nome}
+                      onChange={(e) => {
+                        const copia = [...unidadesConfig];
+                        copia[idx].nome = e.target.value;
+                        setUnidadesConfig(copia);
+                      }}
+                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                    />
+                    <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5">
+                      <span className="text-[11px] text-emerald-400 font-bold whitespace-nowrap">Troco R$:</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={uni.fundo_troco ?? 200}
+                        onChange={(e) => {
+                          const copia = [...unidadesConfig];
+                          copia[idx].fundo_troco = e.target.value === '' ? '' : Number(e.target.value);
+                          setUnidadesConfig(copia);
+                        }}
+                        className="w-full bg-transparent text-xs font-bold text-white outline-none"
+                      />
+                    </div>
+                  </div>
                   <input
                     type="text"
                     placeholder="Endereço Completo"
@@ -1606,7 +2007,7 @@ export default function App() {
                 </div>
               ))}
               <button type="submit" className="w-full bg-amber-500 text-slate-950 font-bold py-2.5 rounded-lg text-sm">
-                Salvar Endereços & Fechar
+                Salvar Configurações & Fechar
               </button>
             </form>
           </div>
@@ -1623,7 +2024,7 @@ export default function App() {
               onClick={() => setAbaAtiva(aba.id)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
                 abaAtiva === aba.id 
-                  ? 'bg-amber-500 text-slate-950 shadow' 
+                  ? `${temaUnidade.botaoAtivo} shadow` 
                   : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
             >
@@ -1677,7 +2078,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-4 space-y-6">
+      <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-4 space-y-5">
         {/* ================= ABA 0: DASHBOARD EXECUTIVO ================= */}
         {abaAtiva === 'dashboard' && (
           <div className="space-y-5">
@@ -1685,6 +2086,7 @@ export default function App() {
               <div onClick={() => setAbaAtiva('caixa')} className="cursor-pointer bg-slate-900 hover:border-emerald-500/50 transition p-3.5 rounded-xl border border-slate-800">
                 <span className="text-xs text-slate-400">Caixa Hoje ({unidadeAtiva === 'todas' ? '2 Pontos' : infoUnidadeAtual.nome.split(' ')[0]})</span>
                 <p className="text-xl sm:text-2xl font-bold text-emerald-400 mt-1">R$ {faturamentoHoje.toFixed(2)}</p>
+                <span className="text-[10px] text-slate-500">+ Troco fixo: R$ {fundoTrocoAtual.toFixed(2)}</span>
               </div>
 
               <div onClick={() => setAbaAtiva('os')} className="cursor-pointer bg-slate-900 hover:border-amber-500/50 transition p-3.5 rounded-xl border border-slate-800">
@@ -1704,28 +2106,34 @@ export default function App() {
             </div>
 
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-              <h2 className="font-bold text-sm text-amber-400 mb-3 flex items-center gap-1.5">
+              <h2 className={`font-bold text-sm mb-3 flex items-center gap-1.5 ${temaUnidade.textoDestaque}`}>
                 <Zap size={16} /> Atalhos Rápidos ({infoUnidadeAtual.nome})
               </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
                 <button onClick={() => setAbaAtiva('pdv')} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5">
                   <ShoppingCart size={16} /> Venda Balcão
                 </button>
-                <button onClick={() => setAbaAtiva('simulador')} className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5">
+                <button onClick={() => setAbaAtiva('simulador')} className={`${temaUnidade.botaoAtivo} font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5`}>
                   <Calculator size={16} /> Simular Preço
                 </button>
-                <button onClick={() => setAbaAtiva('os')} className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-slate-700">
+                <button onClick={() => { setAbaAtiva('os'); toggleForm('os', true); }} className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-slate-700">
                   <Wrench size={16} /> Emitir OS
                 </button>
-                <button onClick={() => setAbaAtiva('orcamento')} className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-slate-700">
-                  <FolderClock size={16} /> Orçamentos ({orcamentosEmStandby.length})
+                <button onClick={() => { setAbaAtiva('orcamento'); toggleForm('orcamento', true); }} className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-slate-700">
+                  <FolderClock size={16} /> Orçamento
+                </button>
+                <button
+                  onClick={() => abrirPortalNFSe()}
+                  className="col-span-2 sm:col-span-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
+                >
+                  <Receipt size={16} /> Emitir NFS-e <ExternalLink size={12} />
                 </button>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-                <h3 className="font-bold text-amber-400 text-sm flex items-center gap-2">
+                <h3 className={`font-bold text-sm flex items-center gap-2 ${temaUnidade.textoDestaque}`}>
                   <Award size={16} /> Top Chaves Mais Vendidas
                 </h3>
                 {topChavesMaisVendidas.length === 0 ? (
@@ -1749,7 +2157,7 @@ export default function App() {
               </div>
 
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-                <h3 className="font-bold text-amber-400 text-sm flex items-center gap-2">
+                <h3 className={`font-bold text-sm flex items-center gap-2 ${temaUnidade.textoDestaque}`}>
                   <Clock size={16} /> Agenda de Boletos & Alertas de Estoque
                 </h3>
                 {boletosPendentes.length === 0 && itensEstoqueBaixo.length === 0 ? (
@@ -1783,25 +2191,38 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2 space-y-4">
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-                <h2 className="font-bold text-amber-400 mb-3 flex items-center justify-between text-sm sm:text-base">
-                  <span className="flex items-center gap-2"><Search size={18} /> Selecionar Chave / Produto ({infoUnidadeAtual.nome})</span>
+                <h2 className={`font-bold mb-3 flex items-center gap-2 text-sm sm:text-base ${temaUnidade.textoDestaque}`}>
+                  <Search size={18} /> Selecionar Chave / Produto ({infoUnidadeAtual.nome})
                 </h2>
-                <input
-                  ref={inputBuscaPdvRef}
-                  type="text"
-                  placeholder="Buscar chave por código ou nome..."
-                  value={buscaPdv}
-                  onChange={(e) => setBuscaPdv(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm mb-3"
-                />
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+
+                <div className="relative mb-3">
+                  <input
+                    ref={inputBuscaPdvRef}
+                    type="text"
+                    placeholder="Buscar chave por código ou nome..."
+                    value={buscaPdv}
+                    onChange={(e) => setBuscaPdv(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-3 pr-9 py-2.5 text-sm"
+                  />
+                  {buscaPdv && (
+                    <button
+                      type="button"
+                      onClick={() => setBuscaPdv('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-72 overflow-y-auto">
                   {estoqueUnidade
                     .filter((i) => i.nome.toLowerCase().includes(buscaPdv.toLowerCase()) || i.id.toLowerCase().includes(buscaPdv.toLowerCase()))
                     .map((item) => (
                       <button
                         key={item.id}
                         onClick={() => adicionarAoCarrinho(item)}
-                        className="p-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-lg text-left transition flex flex-col justify-between"
+                        className="p-3 bg-slate-950 hover:bg-slate-800 active:scale-[0.98] border border-slate-800 rounded-lg text-left transition flex flex-col justify-between"
                       >
                         <div>
                           <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">{item.id}</span>
@@ -1819,23 +2240,128 @@ export default function App() {
               </div>
 
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-                <h3 className="font-bold text-sm text-slate-300">Serviços Rápidos da Tabela ou Mão de Obra Avulsa</h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {listaServicosBase.slice(0, 6).map((srv) => (
-                    <button
-                      key={srv.id}
-                      type="button"
-                      onClick={() => adicionarServicoAvulsoPdv(srv.nome, srv.valor)}
-                      className="bg-slate-950 hover:bg-slate-800 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-amber-300 font-medium"
-                    >
-                      + {srv.nome} (R$ {srv.valor})
-                    </button>
-                  ))}
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-bold text-sm text-slate-200">
+                    Serviços Rápidos da Tabela ou Mão de Obra Avulsa
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGerenciandoServicosPdv(!gerenciandoServicosPdv);
+                      setServicoRapidoForm({ id: null, nome: '', valor: '' });
+                    }}
+                    className={`text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 border transition ${
+                      gerenciandoServicosPdv
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-500'
+                        : 'bg-slate-950 text-amber-400 border-slate-700 hover:bg-slate-800'
+                    }`}
+                  >
+                    {gerenciandoServicosPdv ? (
+                      <><Check size={13} /> Concluir Edição</>
+                    ) : (
+                      <><Edit2 size={13} /> Editar Lista</>
+                    )}
+                  </button>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+
+                {gerenciandoServicosPdv ? (
+                  <div className="space-y-3 bg-slate-950 p-3 rounded-xl border border-amber-500/40">
+                    <form onSubmit={salvarServicoRapidoPdv} className="space-y-2">
+                      <span className="text-[11px] font-bold uppercase text-amber-400 block">
+                        {servicoRapidoForm.id ? 'Alterando serviço selecionado:' : 'Adicionar novo serviço rápido:'}
+                      </span>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="text"
+                          placeholder="Nome do serviço (Ex: Abertura Residencial)"
+                          required
+                          value={servicoRapidoForm.nome}
+                          onChange={(e) => setServicoRapidoForm({ ...servicoRapidoForm, nome: e.target.value })}
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs sm:text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Preço R$"
+                            required
+                            value={servicoRapidoForm.valor}
+                            onChange={(e) => setServicoRapidoForm({ ...servicoRapidoForm, valor: e.target.value })}
+                            className="w-28 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs sm:text-sm"
+                          />
+                          <button
+                            type="submit"
+                            className={`${temaUnidade.botaoAtivo} font-bold px-3.5 py-2 rounded-lg text-xs whitespace-nowrap`}
+                          >
+                            {servicoRapidoForm.id ? 'Atualizar' : '+ Salvar'}
+                          </button>
+                          {servicoRapidoForm.id && (
+                            <button
+                              type="button"
+                              onClick={() => setServicoRapidoForm({ id: null, nome: '', valor: '' })}
+                              className="bg-slate-800 text-slate-300 px-2.5 py-2 rounded-lg text-xs"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </form>
+
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pt-1 border-t border-slate-800">
+                      {listaServicosBase.length === 0 ? (
+                        <p className="text-xs text-slate-500 py-2">Nenhum serviço rápido cadastrado ainda.</p>
+                      ) : (
+                        listaServicosBase.map((srv) => (
+                          <div key={srv.id} className="bg-slate-900 px-3 py-2 rounded-lg border border-slate-800 flex items-center justify-between gap-2 text-xs">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-200 truncate">{srv.nome}</p>
+                              <span className="text-emerald-400 font-bold">R$ {Number(srv.valor).toFixed(2)}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setServicoRapidoForm({ id: srv.id, nome: srv.nome, valor: srv.valor })}
+                                className="bg-slate-950 text-amber-400 p-1.5 rounded-lg border border-slate-700"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => excluirItemTabelaPrecos(srv.id)}
+                                className="bg-slate-950 text-red-400 p-1.5 rounded-lg border border-slate-700"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {listaServicosBase.length === 0 ? (
+                      <p className="text-xs text-slate-500">Toque em "Editar Lista" para cadastrar seus serviços rápidos.</p>
+                    ) : (
+                      listaServicosBase.map((srv) => (
+                        <button
+                          key={srv.id}
+                          type="button"
+                          onClick={() => adicionarServicoAvulsoPdv(srv.nome, srv.valor)}
+                          className="bg-slate-950 hover:bg-slate-800 active:scale-[0.98] border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-amber-300 font-medium transition"
+                        >
+                          + {srv.nome} (R$ {Number(srv.valor).toFixed(2)})
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-800/80">
                   <input
                     type="text"
-                    placeholder="Descrição do serviço avulso..."
+                    placeholder="Descrição do serviço avulso (só para esta venda)..."
                     value={servicoAvulsoDesc}
                     onChange={(e) => setServicoAvulsoDesc(e.target.value)}
                     className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
@@ -1851,7 +2377,7 @@ export default function App() {
                     />
                     <button
                       onClick={() => adicionarServicoAvulsoPdv()}
-                      className="flex-1 sm:flex-none bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-sm"
+                      className={`flex-1 sm:flex-none ${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-lg text-sm`}
                     >
                       + Incluir
                     </button>
@@ -1860,170 +2386,42 @@ export default function App() {
               </div>
             </div>
 
-            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4">
-              <div className="space-y-3">
-                <h2 className="font-bold text-amber-400 flex items-center gap-2">
-                  <ShoppingCart size={18} /> Comanda / Nota de Venda
-                </h2>
+            <div className="hidden lg:block">
+              {renderComandaPDV()}
+            </div>
 
-                <div className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-amber-400 uppercase">Cliente (Salva automático na base)</span>
-                    {clientes.length > 0 && (
-                      <select
-                        onChange={(e) => {
-                          const c = clientes.find((cli) => cli.id.toString() === e.target.value);
-                          if (c) setClientePdv({ ...clientePdv, nome: c.nome, tel: c.tel || '' });
-                        }}
-                        defaultValue=""
-                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-300 max-w-[140px]"
-                      >
-                        <option value="" disabled>Puxar salvo...</option>
-                        {clientes.map((c) => (
-                          <option key={c.id} value={c.id}>{c.nome}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Nome / Referência (Ex: Seu Paulinho)"
-                    value={clientePdv.nome}
-                    onChange={(e) => setClientePdv({ ...clientePdv, nome: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                  />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <input
-                      type="tel"
-                      placeholder="WhatsApp (com DDD)"
-                      value={clientePdv.tel}
-                      onChange={(e) => setClientePdv({ ...clientePdv, tel: e.target.value })}
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Obs / Placa / Fechadura"
-                      value={clientePdv.obs}
-                      onChange={(e) => setClientePdv({ ...clientePdv, obs: e.target.value })}
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                    />
-                  </div>
-                </div>
-
-                {carrinho.length === 0 ? (
-                  <p className="text-slate-500 text-xs py-6 text-center">Toque nas chaves ou serviços para montar a nota.</p>
-                ) : (
-                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                    {carrinho.map((item, idx) => (
-                      <div key={idx} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="font-semibold text-xs text-slate-100">{item.nome}</p>
-                          <button
-                            onClick={() => setCarrinho(carrinho.filter((_, i) => i !== idx))}
-                            className="text-red-400 hover:text-red-300 p-0.5"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 text-xs">
-                          <div className="flex items-center gap-1">
-                            <button type="button" onClick={() => alterarQtdItemCarrinho(idx, -1)} className="bg-slate-800 px-2 py-1 rounded font-bold">-</button>
-                            <span className="px-1.5 font-bold">{item.qtdVenda}x</span>
-                            <button type="button" onClick={() => alterarQtdItemCarrinho(idx, 1)} className="bg-slate-800 px-2 py-1 rounded font-bold">+</button>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span className="text-slate-400 text-[11px]">Un R$:</span>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={item.precoEditado}
-                              onChange={(e) => alterarPrecoItemCarrinho(idx, e.target.value)}
-                              className="w-20 bg-slate-900 border border-amber-500/40 rounded px-2 py-1 text-xs font-bold text-amber-400 text-right"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="border-t border-slate-800 pt-3 space-y-3">
-                <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="text-slate-400">Desconto na venda (R$):</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="0,00"
-                    value={descontoPdv}
-                    onChange={(e) => setDescontoPdv(e.target.value)}
-                    className="w-24 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-right text-red-400 font-bold"
-                  />
-                </div>
-
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Total Final:</span>
-                  <span className="text-emerald-400">R$ {totalLiquidoPdv.toFixed(2)}</span>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs text-slate-400 block">Forma de Pagamento</label>
-                  <select
-                    value={formaPgto}
-                    onChange={(e) => setFormaPgto(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  >
-                    <option>Pix</option>
-                    <option>Dinheiro</option>
-                    <option>Cartão de Débito</option>
-                    <option>Cartão de Crédito</option>
-                    <option>A Receber (Fiado)</option>
-                  </select>
-
-                  {formaPgto.includes('Cartão') && (
-                    <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
-                      <label className="text-[11px] text-amber-400 font-semibold flex items-center gap-1">
-                        <CreditCard size={12} /> Modalidade / Parcelas da Maquininha:
-                      </label>
-                      <select
-                        value={taxaCartaoIdPdv}
-                        onChange={(e) => setTaxaCartaoIdPdv(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs"
-                      >
-                        <option value="">Sem desconto de taxa (0%)</option>
-                        {taxasCartaoDisponiveis.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.nome} — Taxa: {t.valor}% (-R$ {((totalLiquidoPdv * Number(t.valor)) / 100).toFixed(2)})
-                          </option>
-                        ))}
-                      </select>
-                      {valorTaxaMaquininhaPdv > 0 && (
-                        <p className="text-[11px] text-slate-400">
-                          Você recebe líquido: <strong className="text-emerald-400">R$ {(totalLiquidoPdv - valorTaxaMaquininhaPdv).toFixed(2)}</strong>
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
+            {carrinho.length > 0 && !comandaMobileAberta && (
+              <div className="lg:hidden fixed bottom-[60px] left-3 right-3 z-40">
                 <button
-                  onClick={finalizarVendaPdv}
-                  disabled={carrinho.length === 0 || loading}
-                  className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold py-3.5 rounded-xl text-sm transition shadow"
+                  onClick={() => setComandaMobileAberta(true)}
+                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-3.5 rounded-xl shadow-2xl flex items-center justify-between"
                 >
-                  Confirmar Venda & Gerar Comprovante
+                  <span className="flex items-center gap-2 text-sm">
+                    <ShoppingCart size={18} /> {totalItensCarrinho} {totalItensCarrinho === 1 ? 'item' : 'itens'} • R$ {totalLiquidoPdv.toFixed(2)}
+                  </span>
+                  <span className="flex items-center gap-1 text-xs bg-slate-950/20 px-2.5 py-1 rounded-lg">
+                    Ver Comanda <ChevronUp size={15} />
+                  </span>
                 </button>
               </div>
-            </div>
+            )}
+
+            {comandaMobileAberta && (
+              <div className="lg:hidden fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-2">
+                <div className="w-full max-h-[90vh] overflow-y-auto rounded-2xl">
+                  {renderComandaPDV()}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
         {/* ================= ABA 2: SIMULADOR DE PREÇOS & TABELA EDITÁVEL ================= */}
         {abaAtiva === 'simulador' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
               <div className="lg:col-span-2 bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-                <h2 className="font-bold text-amber-400 flex items-center gap-2">
+                <h2 className={`font-bold flex items-center gap-2 ${temaUnidade.textoDestaque}`}>
                   <Calculator size={18} /> Calculadora Rápida de Serviço
                 </h2>
 
@@ -2142,7 +2540,7 @@ export default function App() {
 
               <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4">
                 <div className="space-y-3">
-                  <h3 className="font-bold text-amber-400">Resumo da Cotação</h3>
+                  <h3 className={`font-bold ${temaUnidade.textoDestaque}`}>Resumo da Cotação</h3>
                   <p className="text-xs text-slate-300 bg-slate-950 p-3 rounded-lg border border-slate-800">
                     {montarResumoSimulador()}
                   </p>
@@ -2204,7 +2602,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => salvarSimuladorEmStandby(false)}
-                    className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5"
+                    className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
                   >
                     <FolderClock size={15} /> Só Salvar em Standby
                   </button>
@@ -2212,7 +2610,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={enviarSimuladorParaPDV}
-                      className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 rounded-lg text-xs"
+                      className={`${temaUnidade.botaoAtivo} font-bold py-2 rounded-lg text-xs`}
                     >
                       Jogar pro PDV
                     </button>
@@ -2229,276 +2627,302 @@ export default function App() {
             </div>
 
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-              <h3 className="font-bold text-amber-400">
-                Gerenciar Repertório de Preços, Marcas de Fechaduras e Taxas da Maquininha
-              </h3>
-              <form onSubmit={salvarItemTabelaPrecos} className="grid grid-cols-1 sm:grid-cols-6 gap-2">
-                <select
-                  value={novoItemTabela.grupo}
-                  onChange={(e) => setNovoItemTabela({ ...novoItemTabela, grupo: e.target.value, tipo_valor: e.target.value === 'taxa_cartao' ? 'percentual' : 'fixo' })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-xs"
+              <div className="flex items-center justify-between">
+                <h3 className={`font-bold text-sm ${temaUnidade.textoDestaque}`}>
+                  Tabela de Preços, Marcas e Taxas da Maquininha ({tabelaPrecos.length})
+                </h3>
+                <button
+                  onClick={() => toggleForm('tabela')}
+                  className={`${temaUnidade.botaoAtivo} text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1`}
                 >
-                  <option value="servico">Serviço Base</option>
-                  <option value="peca">Peça / Fechadura / Miolo</option>
-                  <option value="adicional">Acréscimo (Área/Urgência)</option>
-                  <option value="taxa_cartao">Taxa Maquininha (%)</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder="Nome (Ex: Abertura / Cilindro / Crédito 3x) *"
-                  required
-                  value={novoItemTabela.nome}
-                  onChange={(e) => setNovoItemTabela({ ...novoItemTabela, nome: e.target.value })}
-                  className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-xs"
-                />
-                <input
-                  type="text"
-                  placeholder="Marca / Detalhe (Ex: Stam, Papaiz)"
-                  value={novoItemTabela.marca}
-                  onChange={(e) => setNovoItemTabela({ ...novoItemTabela, marca: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-xs"
-                />
-                <div className="flex gap-1">
-                  <select
-                    value={novoItemTabela.tipo_valor}
-                    onChange={(e) => setNovoItemTabela({ ...novoItemTabela, tipo_valor: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2.5 text-xs"
-                  >
-                    <option value="fixo">R$</option>
-                    <option value="percentual">%</option>
-                  </select>
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="Valor *"
-                    required
-                    value={novoItemTabela.valor}
-                    onChange={(e) => setNovoItemTabela({ ...novoItemTabela, valor: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-2.5 text-xs"
-                  />
-                </div>
-                <button type="submit" className="bg-amber-500 text-slate-950 font-bold py-2.5 px-3 rounded-lg text-xs">
-                  {novoItemTabela.id ? 'Atualizar' : '+ Cadastrar'}
+                  {formAberto.tabela ? <><X size={14} /> Fechar</> : <><Plus size={14} /> Editar / Adicionar Preços</>}
                 </button>
-              </form>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
-                {tabelaPrecos.map((item) => (
-                  <div key={item.id} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between gap-2 text-xs">
-                    <div>
-                      <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-slate-800 text-amber-400 mr-1.5">
-                        {item.grupo}
-                      </span>
-                      <strong className="text-slate-200">{item.nome}</strong>
-                      {item.marca && <span className="text-slate-400"> ({item.marca})</span>}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-bold text-emerald-400">
-                        {item.tipo_valor === 'percentual' ? `${item.valor}%` : `R$ ${Number(item.valor).toFixed(2)}`}
-                      </span>
-                      <button onClick={() => setNovoItemTabela(item)} className="text-amber-400 p-1">
-                        <Edit2 size={14} />
-                      </button>
-                      <button onClick={() => excluirItemTabelaPrecos(item.id)} className="text-red-400 p-1">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
               </div>
+
+              {formAberto.tabela && (
+                <>
+                  <form onSubmit={salvarItemTabelaPrecos} className="grid grid-cols-1 sm:grid-cols-6 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    <select
+                      value={novoItemTabela.grupo}
+                      onChange={(e) => setNovoItemTabela({ ...novoItemTabela, grupo: e.target.value, tipo_valor: e.target.value === 'taxa_cartao' ? 'percentual' : 'fixo' })}
+                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-xs"
+                    >
+                      <option value="servico">Serviço Base</option>
+                      <option value="peca">Peça / Fechadura / Miolo</option>
+                      <option value="adicional">Acréscimo (Área/Urgência)</option>
+                      <option value="taxa_cartao">Taxa Maquininha (%)</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Nome (Ex: Abertura / Cilindro) *"
+                      required
+                      value={novoItemTabela.nome}
+                      onChange={(e) => setNovoItemTabela({ ...novoItemTabela, nome: e.target.value })}
+                      className="sm:col-span-2 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-xs"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Marca / Detalhe"
+                      value={novoItemTabela.marca}
+                      onChange={(e) => setNovoItemTabela({ ...novoItemTabela, marca: e.target.value })}
+                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-xs"
+                    />
+                    <div className="flex gap-1">
+                      <select
+                        value={novoItemTabela.tipo_valor}
+                        onChange={(e) => setNovoItemTabela({ ...novoItemTabela, tipo_valor: e.target.value })}
+                        className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-2.5 text-xs"
+                      >
+                        <option value="fixo">R$</option>
+                        <option value="percentual">%</option>
+                      </select>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Valor *"
+                        required
+                        value={novoItemTabela.valor}
+                        onChange={(e) => setNovoItemTabela({ ...novoItemTabela, valor: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-2.5 text-xs"
+                      />
+                    </div>
+                    <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold py-2.5 px-3 rounded-lg text-xs`}>
+                      {novoItemTabela.id ? 'Atualizar' : '+ Salvar'}
+                    </button>
+                  </form>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
+                    {tabelaPrecos.map((item) => (
+                      <div key={item.id} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between gap-2 text-xs">
+                        <div>
+                          <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-slate-800 text-amber-400 mr-1.5">
+                            {item.grupo}
+                          </span>
+                          <strong className="text-slate-200">{item.nome}</strong>
+                          {item.marca && <span className="text-slate-400"> ({item.marca})</span>}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-bold text-emerald-400">
+                            {item.tipo_valor === 'percentual' ? `${item.valor}%` : `R$ ${Number(item.valor).toFixed(2)}`}
+                          </span>
+                          <button onClick={() => setNovoItemTabela(item)} className="text-amber-400 p-1">
+                            <Edit2 size={14} />
+                          </button>
+                          <button onClick={() => excluirItemTabelaPrecos(item.id)} className="text-red-400 p-1">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
 
-        {/* ================= ABA 3: ORDENS DE SERVIÇO (COM FUNCIONÁRIO AUTOMÁTICO E ENDEREÇO) ================= */}
+        {/* ================= ABA 3: ORDENS DE SERVIÇO ================= */}
         {abaAtiva === 'os' && (
-          <div className="space-y-6">
-            <form onSubmit={(e) => criarOS(e, false)} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h2 className="font-bold text-amber-400">Emitir Ordem de Serviço ({infoUnidadeAtual.nome})</h2>
-                <div className="flex flex-wrap gap-2">
-                  {clientes.length > 0 && (
-                    <select
-                      onChange={(e) => {
-                        const cli = clientes.find((c) => c.id.toString() === e.target.value);
-                        if (cli) setNovaOS({ ...novaOS, cliente: cli.nome, tel: cli.tel || '', endereco: cli.endereco || novaOS.endereco });
-                      }}
-                      defaultValue=""
-                      className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300"
-                    >
-                      <option value="" disabled>Puxar cliente salvo...</option>
-                      {clientes.map((c) => (
-                        <option key={c.id} value={c.id}>{c.nome}</option>
-                      ))}
-                    </select>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setModalConfigUnidades(true)}
-                    className="bg-slate-950 border border-sky-700 text-sky-400 text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1"
-                  >
-                    <UserPlus size={13} /> {funcionarios.length === 0 ? 'Cadastrar Funcionário' : `Funcionários (${funcionarios.length})`}
-                  </button>
-                </div>
-              </div>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
+                Ordens de Serviço — {infoUnidadeAtual.nome} ({osUnidade.length})
+              </h2>
+              <button
+                onClick={() => toggleForm('os')}
+                className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow`}
+              >
+                {formAberto.os ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Nova Ordem de Serviço</>}
+              </button>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input
-                  type="text"
-                  placeholder="Nome do Cliente *"
-                  required
-                  value={novaOS.cliente}
-                  onChange={(e) => setNovaOS({ ...novaOS, cliente: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <input
-                  type="tel"
-                  placeholder="WhatsApp do Cliente (DDD)"
-                  value={novaOS.tel}
-                  onChange={(e) => setNovaOS({ ...novaOS, tel: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <input
-                  type="text"
-                  placeholder="Endereço / Local do Serviço (Sai na ficha)"
-                  value={novaOS.endereco}
-                  onChange={(e) => setNovaOS({ ...novaOS, endereco: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input
-                  type="text"
-                  placeholder="O que será feito (Descrição detalhada) *"
-                  required
-                  value={novaOS.desc}
-                  onChange={(e) => setNovaOS({ ...novaOS, desc: e.target.value })}
-                  className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Valor Total Cobrado (R$) *"
-                  required
-                  value={novaOS.valor}
-                  onChange={(e) => setNovaOS({ ...novaOS, valor: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-              </div>
-
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
-                <span className="text-xs font-bold text-amber-400 block">
-                  Materiais / Chaves / Fechaduras do estoque (Permite vários itens):
-                </span>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <select
-                    value={itemTempOS.chave_id}
-                    onChange={(e) => setItemTempOS({ ...itemTempOS, chave_id: e.target.value })}
-                    className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                  >
-                    <option value="">Selecionar item do estoque...</option>
-                    {estoqueUnidade.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        [{item.id}] {item.nome} (Estoque: {item.qtd})
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      min="1"
-                      placeholder="Qtd"
-                      value={itemTempOS.qtd}
-                      onChange={(e) => setItemTempOS({ ...itemTempOS, qtd: e.target.value })}
-                      className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                    />
+            {formAberto.os && (
+              <form onSubmit={(e) => criarOS(e, false)} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 shadow-lg">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase text-slate-400">Preencher Nova OS</span>
+                  <div className="flex flex-wrap gap-2">
+                    {clientes.length > 0 && (
+                      <select
+                        onChange={(e) => {
+                          const cli = clientes.find((c) => c.id.toString() === e.target.value);
+                          if (cli) setNovaOS({ ...novaOS, cliente: cli.nome, tel: cli.tel || '', endereco: cli.endereco || novaOS.endereco });
+                        }}
+                        defaultValue=""
+                        className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300"
+                      >
+                        <option value="" disabled>Puxar cliente salvo...</option>
+                        {clientes.map((c) => (
+                          <option key={c.id} value={c.id}>{c.nome}</option>
+                        ))}
+                      </select>
+                    )}
                     <button
                       type="button"
-                      onClick={adicionarMaterialNaOS}
-                      className="bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold px-3 py-2 rounded-lg text-xs border border-slate-700 whitespace-nowrap"
+                      onClick={() => setModalConfigUnidades(true)}
+                      className="bg-slate-950 border border-sky-700 text-sky-400 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1"
                     >
-                      + Incluir Material
+                      <UserPlus size={13} /> Equipe ({funcionarios.length})
                     </button>
                   </div>
                 </div>
 
-                {novaOS.itens_usados.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {novaOS.itens_usados.map((m, idx) => (
-                      <span key={idx} className="bg-slate-900 border border-amber-500/40 text-amber-300 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-                        {m.qtd}x {m.nome}
-                        <button type="button" onClick={() => removerMaterialDaOS(idx)} className="text-red-400">
-                          <X size={13} />
-                        </button>
-                      </span>
-                    ))}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <input
+                    type="text"
+                    placeholder="Nome do Cliente *"
+                    required
+                    value={novaOS.cliente}
+                    onChange={(e) => setNovaOS({ ...novaOS, cliente: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="WhatsApp do Cliente (DDD)"
+                    value={novaOS.tel}
+                    onChange={(e) => setNovaOS({ ...novaOS, tel: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Endereço / Local do Serviço"
+                    value={novaOS.endereco}
+                    onChange={(e) => setNovaOS({ ...novaOS, endereco: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <input
+                    type="text"
+                    placeholder="O que será feito (Descrição) *"
+                    required
+                    value={novaOS.desc}
+                    onChange={(e) => setNovaOS({ ...novaOS, desc: e.target.value })}
+                    className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Valor Total (R$) *"
+                    required
+                    value={novaOS.valor}
+                    onChange={(e) => setNovaOS({ ...novaOS, valor: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                </div>
+
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                  <span className="text-xs font-bold text-amber-400 block">
+                    Materiais do estoque (Permite vários itens):
+                  </span>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <select
+                      value={itemTempOS.chave_id}
+                      onChange={(e) => setItemTempOS({ ...itemTempOS, chave_id: e.target.value })}
+                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                    >
+                      <option value="">Selecionar item do estoque...</option>
+                      {estoqueUnidade.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          [{item.id}] {item.nome} (Est: {item.qtd})
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        value={itemTempOS.qtd}
+                        onChange={(e) => setItemTempOS({ ...itemTempOS, qtd: e.target.value })}
+                        className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={adicionarMaterialNaOS}
+                        className="bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold px-3 py-2 rounded-lg text-xs border border-slate-700"
+                      >
+                        + Incluir
+                      </button>
+                    </div>
                   </div>
-                )}
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <select
-                  value={novaOS.funcionario_id}
-                  onChange={(e) => setNovaOS({ ...novaOS, funcionario_id: e.target.value })}
-                  className="bg-slate-950 border border-sky-800 rounded-lg px-3 py-2 text-xs text-sky-300 font-bold"
-                >
-                  <option value="">
-                    {funcionarioPadraoUnidade
-                      ? `Funcionário: ${funcionarioPadraoUnidade.nome} (Padrão)`
-                      : 'Sem funcionário selecionado'}
-                  </option>
-                  {funcionarios.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      Funcionário: {f.nome} ({f.unidade.toUpperCase()})
+                  {novaOS.itens_usados.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {novaOS.itens_usados.map((m, idx) => (
+                        <span key={idx} className="bg-slate-900 border border-amber-500/40 text-amber-300 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                          {m.qtd}x {m.nome}
+                          <button type="button" onClick={() => removerMaterialDaOS(idx)} className="text-red-400">
+                            <X size={13} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <select
+                    value={novaOS.funcionario_id}
+                    onChange={(e) => setNovaOS({ ...novaOS, funcionario_id: e.target.value })}
+                    className="bg-slate-950 border border-sky-800 rounded-lg px-3 py-2 text-xs text-sky-300 font-bold"
+                  >
+                    <option value="">
+                      {funcionarioPadraoUnidade
+                        ? `Funcionário: ${funcionarioPadraoUnidade.nome} (Padrão)`
+                        : 'Sem funcionário selecionado'}
                     </option>
-                  ))}
-                </select>
+                    {funcionarios.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        Funcionário: {f.nome} ({f.unidade.toUpperCase()})
+                      </option>
+                    ))}
+                  </select>
 
-                <select
-                  value={novaOS.forma_pgto}
-                  onChange={(e) => setNovaOS({ ...novaOS, forma_pgto: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-amber-300 font-semibold"
-                >
-                  <option value="Receber na Entrega (Pix/Cartão)">Pagamento: Receber na Entrega</option>
-                  <option value="Já Pago Adiantado">Pagamento: Já Pago Adiantado</option>
-                  <option value="Sinal 50% Pago / Cobrar Restante">Pagamento: Sinal 50% Pago (Cobrar resto)</option>
-                  <option value="Faturado / Condomínio">Pagamento: Faturado / Condomínio</option>
-                </select>
+                  <select
+                    value={novaOS.forma_pgto}
+                    onChange={(e) => setNovaOS({ ...novaOS, forma_pgto: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-amber-300 font-semibold"
+                  >
+                    <option value="Receber na Entrega (Pix/Cartão)">Pagamento: Receber na Entrega</option>
+                    <option value="Já Pago Adiantado">Pagamento: Já Pago Adiantado</option>
+                    <option value="Sinal 50% Pago / Cobrar Restante">Pagamento: Sinal 50% Pago</option>
+                    <option value="Faturado / Condomínio">Pagamento: Faturado / Condomínio</option>
+                  </select>
 
-                <select
-                  value={novaOS.garantia}
-                  onChange={(e) => setNovaOS({ ...novaOS, garantia: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300"
-                >
-                  <option value="90 dias">Garantia Legal: 90 dias</option>
-                  <option value="6 meses">Garantia: 6 meses</option>
-                  <option value="1 ano">Garantia: 1 ano</option>
-                  <option value="Sem garantia">Sem garantia</option>
-                </select>
+                  <select
+                    value={novaOS.garantia}
+                    onChange={(e) => setNovaOS({ ...novaOS, garantia: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300"
+                  >
+                    <option value="90 dias">Garantia: 90 dias</option>
+                    <option value="6 meses">Garantia: 6 meses</option>
+                    <option value="1 ano">Garantia: 1 ano</option>
+                    <option value="Sem garantia">Sem garantia</option>
+                  </select>
 
-                <input
-                  type="text"
-                  placeholder="Placa / Modelo Fechadura / Obs"
-                  value={novaOS.obs_tecnica}
-                  onChange={(e) => setNovaOS({ ...novaOS, obs_tecnica: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                />
-              </div>
+                  <input
+                    type="text"
+                    placeholder="Placa / Fechadura / Obs"
+                    value={novaOS.obs_tecnica}
+                    onChange={(e) => setNovaOS({ ...novaOS, obs_tecnica: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                  />
+                </div>
 
-              <div className="flex flex-wrap gap-2 pt-1">
-                <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-lg text-xs sm:text-sm">
-                  Gerar Ordem de Serviço
-                </button>
-                <button
-                  type="button"
-                  onClick={() => criarOS(null, true)}
-                  className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5"
-                >
-                  <Send size={15} /> Gerar OS & Já Abrir WhatsApp do Funcionário
-                </button>
-              </div>
-            </form>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold px-5 py-2.5 rounded-lg text-xs sm:text-sm`}>
+                    Salvar OS
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => criarOS(null, true)}
+                    className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5"
+                  >
+                    <Send size={15} /> Salvar & Enviar pro Funcionário
+                  </button>
+                </div>
+              </form>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {osUnidade.map((os) => {
@@ -2522,12 +2946,8 @@ export default function App() {
                       {os.endereco && <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><MapPin size={11} /> {os.endereco}</p>}
                       <p className="text-sm text-slate-200 mt-1.5">{os.desc}</p>
                       <div className="flex flex-wrap gap-2 mt-1.5">
-                        {os.forma_pgto && (
-                          <span className="text-[11px] text-amber-300 font-medium">Pgto: {os.forma_pgto}</span>
-                        )}
-                        {nomeFuncExibido && (
-                          <span className="text-[11px] text-sky-400 font-bold">Resp: {nomeFuncExibido}</span>
-                        )}
+                        {os.forma_pgto && <span className="text-[11px] text-amber-300 font-medium">Pgto: {os.forma_pgto}</span>}
+                        {nomeFuncExibido && <span className="text-[11px] text-sky-400 font-bold">Resp: {nomeFuncExibido}</span>}
                       </div>
                       {listaMat.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
@@ -2568,21 +2988,30 @@ export default function App() {
                             </button>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => setComprovanteAtivo({
-                              origem: `OS Nº ${os.id.toString().slice(-4)}`,
-                              cliente: os.cliente,
-                              tel: os.tel || '',
-                              itensTexto: `- ${os.desc}`,
-                              total: os.valor,
-                              forma: 'Pix',
-                              garantia: '90 dias',
-                              unidade: os.unidade || unidadeOperacional
-                            })}
-                            className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1"
-                          >
-                            <Share2 size={13} /> Comprovante Cliente
-                          </button>
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              onClick={() => setComprovanteAtivo({
+                                origem: `OS Nº ${os.id.toString().slice(-4)}`,
+                                cliente: os.cliente,
+                                tel: os.tel || '',
+                                itensTexto: `- ${os.desc}`,
+                                total: os.valor,
+                                forma: 'Pix',
+                                garantia: '90 dias',
+                                unidade: os.unidade || unidadeOperacional
+                              })}
+                              className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1"
+                            >
+                              <Share2 size={13} /> Comprovante
+                            </button>
+                            <button
+                              onClick={() => abrirPortalNFSe({ cliente: os.cliente, desc: os.desc, valor: os.valor })}
+                              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1"
+                              title="Copia os dados e abre o portal oficial da NFS-e"
+                            >
+                              <Receipt size={13} /> NFS-e
+                            </button>
+                          </div>
                         )}
                         <button onClick={() => excluirOS(os.id)} className="text-red-400 hover:text-red-300 p-2">
                           <Trash2 size={16} />
@@ -2598,161 +3027,173 @@ export default function App() {
 
         {/* ================= ABA 4: AGENDA DE SOCORROS ================= */}
         {abaAtiva === 'agenda' && (
-          <div className="space-y-6">
-            <form onSubmit={(e) => criarAgendamento(e, false)} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h2 className="font-bold text-amber-400">Agendar Socorro Externo ({infoUnidadeAtual.nome})</h2>
-                {clientes.length > 0 && (
-                  <select
-                    onChange={(e) => {
-                      const cli = clientes.find((c) => c.id.toString() === e.target.value);
-                      if (cli) setNovoAgendamento({ ...novoAgendamento, cliente: cli.nome, tel: cli.tel || '', endereco: cli.endereco || novoAgendamento.endereco });
-                    }}
-                    defaultValue=""
-                    className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300"
-                  >
-                    <option value="" disabled>Puxar cliente salvo...</option>
-                    {clientes.map((c) => (
-                      <option key={c.id} value={c.id}>{c.nome}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
+                Socorros Externos — {infoUnidadeAtual.nome} ({agendaUnidade.length})
+              </h2>
+              <button
+                onClick={() => toggleForm('agenda')}
+                className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow`}
+              >
+                {formAberto.agenda ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Agendar Socorro</>}
+              </button>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input
-                  type="text"
-                  placeholder="Nome do Cliente *"
-                  required
-                  value={novoAgendamento.cliente}
-                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, cliente: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <input
-                  type="tel"
-                  placeholder="WhatsApp (com DDD)"
-                  value={novoAgendamento.tel}
-                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, tel: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <input
-                  type="text"
-                  placeholder="Endereço / Referência *"
-                  required
-                  value={novoAgendamento.endereco}
-                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, endereco: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <input
-                  type="text"
-                  placeholder="Serviço (Ex: Abertura + Troca Miolo) *"
-                  required
-                  value={novoAgendamento.servico}
-                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, servico: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <div className="flex gap-2">
-                  <input
-                    type="date"
-                    value={novoAgendamento.data}
-                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, data: e.target.value })}
-                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2.5 text-sm"
-                  />
-                  <input
-                    type="time"
-                    value={novoAgendamento.hora}
-                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, hora: e.target.value })}
-                    className="w-28 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2.5 text-sm"
-                  />
+            {formAberto.agenda && (
+              <form onSubmit={(e) => criarAgendamento(e, false)} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase text-slate-400">Novo Atendimento Externo</span>
+                  {clientes.length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        const cli = clientes.find((c) => c.id.toString() === e.target.value);
+                        if (cli) setNovoAgendamento({ ...novoAgendamento, cliente: cli.nome, tel: cli.tel || '', endereco: cli.endereco || novoAgendamento.endereco });
+                      }}
+                      defaultValue=""
+                      className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300"
+                    >
+                      <option value="" disabled>Puxar cliente salvo...</option>
+                      {clientes.map((c) => (
+                        <option key={c.id} value={c.id}>{c.nome}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Valor Total Combinado (R$)"
-                  value={novoAgendamento.valor_estimado}
-                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, valor_estimado: e.target.value, taxa_deslocamento: 0 })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-              </div>
 
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
-                <span className="text-xs font-bold text-amber-400 block">
-                  Materiais do Estoque levados no Socorro (Opcional):
-                </span>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <select
-                    value={itemTempAg.chave_id}
-                    onChange={(e) => setItemTempAg({ ...itemTempAg, chave_id: e.target.value })}
-                    className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                  >
-                    <option value="">Selecionar peça/chave do estoque...</option>
-                    {estoqueUnidade.map((item) => (
-                      <option key={item.id} value={item.id}>[{item.id}] {item.nome} (Disp: {item.qtd})</option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <input
+                    type="text"
+                    placeholder="Nome do Cliente *"
+                    required
+                    value={novoAgendamento.cliente}
+                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, cliente: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="WhatsApp (com DDD)"
+                    value={novoAgendamento.tel}
+                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, tel: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Endereço / Referência *"
+                    required
+                    value={novoAgendamento.endereco}
+                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, endereco: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Serviço (Ex: Abertura + Miolo) *"
+                    required
+                    value={novoAgendamento.servico}
+                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, servico: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
                   <div className="flex gap-2">
                     <input
-                      type="number"
-                      min="1"
-                      value={itemTempAg.qtd}
-                      onChange={(e) => setItemTempAg({ ...itemTempAg, qtd: e.target.value })}
-                      className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                      type="date"
+                      value={novoAgendamento.data}
+                      onChange={(e) => setNovoAgendamento({ ...novoAgendamento, data: e.target.value })}
+                      className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2.5 text-sm"
                     />
+                    <input
+                      type="time"
+                      value={novoAgendamento.hora}
+                      onChange={(e) => setNovoAgendamento({ ...novoAgendamento, hora: e.target.value })}
+                      className="w-28 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2.5 text-sm"
+                    />
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Valor Total Combinado (R$)"
+                    value={novoAgendamento.valor_estimado}
+                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, valor_estimado: e.target.value, taxa_deslocamento: 0 })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                </div>
+
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                  <span className="text-xs font-bold text-amber-400 block">Materiais levados no Socorro (Opcional):</span>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <select
+                      value={itemTempAg.chave_id}
+                      onChange={(e) => setItemTempAg({ ...itemTempAg, chave_id: e.target.value })}
+                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                    >
+                      <option value="">Selecionar peça/chave do estoque...</option>
+                      {estoqueUnidade.map((item) => (
+                        <option key={item.id} value={item.id}>[{item.id}] {item.nome} (Disp: {item.qtd})</option>
+                      ))}
+                    </select>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        value={itemTempAg.qtd}
+                        onChange={(e) => setItemTempAg({ ...itemTempAg, qtd: e.target.value })}
+                        className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={adicionarMaterialNoSocorro}
+                        className="bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold px-3 py-2 rounded-lg text-xs border border-slate-700"
+                      >
+                        + Incluir
+                      </button>
+                    </div>
+                  </div>
+                  {novoAgendamento.itens_usados.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {novoAgendamento.itens_usados.map((m, idx) => (
+                        <span key={idx} className="bg-slate-900 border border-amber-500/40 text-amber-300 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                          {m.qtd}x {m.nome}
+                          <button type="button" onClick={() => removerMaterialDoSocorro(idx)} className="text-red-400">
+                            <X size={13} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <select
+                    value={novoAgendamento.funcionario_id}
+                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, funcionario_id: e.target.value })}
+                    className="bg-slate-950 border border-sky-800 rounded-lg px-3 py-2.5 text-xs text-sky-300 font-bold"
+                  >
+                    <option value="">
+                      {funcionarioPadraoUnidade
+                        ? `Funcionário: ${funcionarioPadraoUnidade.nome} (Padrão)`
+                        : 'Sem funcionário selecionado'}
+                    </option>
+                    {funcionarios.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        Funcionário: {f.nome} ({f.unidade.toUpperCase()})
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold px-5 py-2.5 rounded-lg text-xs sm:text-sm`}>
+                      Salvar Socorro
+                    </button>
                     <button
                       type="button"
-                      onClick={adicionarMaterialNoSocorro}
-                      className="bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold px-3 py-2 rounded-lg text-xs border border-slate-700"
+                      onClick={() => criarAgendamento(null, true)}
+                      className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5"
                     >
-                      + Incluir Peça
+                      <Send size={15} /> Salvar & Enviar p/ Funcionário
                     </button>
                   </div>
                 </div>
-                {novoAgendamento.itens_usados.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {novoAgendamento.itens_usados.map((m, idx) => (
-                      <span key={idx} className="bg-slate-900 border border-amber-500/40 text-amber-300 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-                        {m.qtd}x {m.nome}
-                        <button type="button" onClick={() => removerMaterialDoSocorro(idx)} className="text-red-400">
-                          <X size={13} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <select
-                  value={novoAgendamento.funcionario_id}
-                  onChange={(e) => setNovoAgendamento({ ...novoAgendamento, funcionario_id: e.target.value })}
-                  className="bg-slate-950 border border-sky-800 rounded-lg px-3 py-2.5 text-xs text-sky-300 font-bold"
-                >
-                  <option value="">
-                    {funcionarioPadraoUnidade
-                      ? `Funcionário: ${funcionarioPadraoUnidade.nome} (Padrão)`
-                      : 'Sem funcionário selecionado'}
-                  </option>
-                  {funcionarios.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      Funcionário: {f.nome} ({f.unidade.toUpperCase()})
-                    </option>
-                  ))}
-                </select>
-
-                <div className="flex flex-wrap gap-2">
-                  <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-lg text-xs sm:text-sm">
-                    Salvar Socorro na Agenda
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => criarAgendamento(null, true)}
-                    className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5"
-                  >
-                    <Send size={15} /> Salvar & Enviar p/ Funcionário
-                  </button>
-                </div>
-              </div>
-            </form>
+              </form>
+            )}
 
             <div className="space-y-3">
               {agendaUnidade.map((ag) => {
@@ -2768,9 +3209,7 @@ export default function App() {
                       <p className="text-xs text-slate-400 flex items-center gap-1">
                         <MapPin size={13} /> {ag.endereco} {ag.tel ? `• WhatsApp: ${ag.tel}` : ''}
                       </p>
-                      {nomeFuncSoc && (
-                        <span className="text-[11px] text-sky-400 font-bold block">Resp: {nomeFuncSoc}</span>
-                      )}
+                      {nomeFuncSoc && <span className="text-[11px] text-sky-400 font-bold block">Resp: {nomeFuncSoc}</span>}
                       {listaMat.length > 0 && (
                         <div className="flex flex-wrap gap-1 pt-1">
                           {listaMat.map((m, i) => (
@@ -2826,200 +3265,189 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 5: ORÇAMENTOS COM PLANILHA COMPLETA DO CLIENTE E FILA DE STANDBY ================= */}
+        {/* ================= ABA 5: ORÇAMENTOS ================= */}
         {abaAtiva === 'orcamento' && (
-          <div className="space-y-6">
-            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h2 className="font-bold text-amber-400">
-                  {orcamento.id ? `Editando Orçamento de: ${orcamento.cliente}` : `Novo Orçamento — Luisinho Chaveiro (${infoUnidadeAtual.nome})`}
-                </h2>
-                <div className="flex items-center gap-2">
-                  {orcamento.id && (
-                    <button
-                      type="button"
-                      onClick={() => setOrcamento({
-                        id: null,
-                        cliente: '',
-                        tel: '',
-                        endereco: '',
-                        tipo_cliente: 'Residencial',
-                        forma_pgto: 'Pix / Dinheiro (À Vista)',
-                        itens: [{ desc: '', qtd: 1, valor: 0 }],
-                        obs: 'Validade: 7 dias. Garantia de 90 dias.'
-                      })}
-                      className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
-                    >
-                      <X size={14} /> Limpar / Novo
-                    </button>
-                  )}
-                  {clientes.length > 0 && (
-                    <select
-                      onChange={(e) => {
-                        const cli = clientes.find((c) => c.id.toString() === e.target.value);
-                        if (cli) {
-                          setOrcamento({
-                            ...orcamento,
-                            cliente: cli.nome,
-                            tel: cli.tel || '',
-                            endereco: cli.endereco || '',
-                            tipo_cliente: cli.tipo || 'Residencial'
-                          });
-                        }
-                      }}
-                      defaultValue=""
-                      className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-300"
-                    >
-                      <option value="" disabled>Puxar cliente salvo...</option>
-                      {clientes.map((c) => (
-                        <option key={c.id} value={c.id}>{c.nome}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              </div>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
+                Orçamentos em Standby — {infoUnidadeAtual.nome}
+              </h2>
+              <button
+                onClick={() => toggleForm('orcamento')}
+                className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow`}
+              >
+                {formAberto.orcamento ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Novo Orçamento</>}
+              </button>
+            </div>
 
-              {/* DADOS COMPLETOS DO CLIENTE NO ORÇAMENTO */}
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-3">
-                <span className="text-xs font-bold text-amber-400 uppercase block">
-                  1. Dados do Cliente & Local do Serviço (Salva automático em Clientes)
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    placeholder="Nome do Cliente / Condomínio / Empresa *"
-                    value={orcamento.cliente}
-                    onChange={(e) => setOrcamento({ ...orcamento, cliente: e.target.value })}
-                    className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <input
-                    type="tel"
-                    placeholder="WhatsApp do Cliente (com DDD)"
-                    value={orcamento.tel}
-                    onChange={(e) => setOrcamento({ ...orcamento, tel: e.target.value })}
-                    className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <select
-                    value={orcamento.tipo_cliente}
-                    onChange={(e) => setOrcamento({ ...orcamento, tipo_cliente: e.target.value })}
-                    className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm text-slate-200"
-                  >
-                    <option value="Residencial">Cliente: Residencial</option>
-                    <option value="Comercial / Condomínio">Cliente: Comercial / Condomínio</option>
-                    <option value="Automotivo">Cliente: Automotivo</option>
-                  </select>
+            {formAberto.orcamento && (
+              <div className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-4 shadow-lg">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="font-bold text-sm text-amber-400">
+                    {orcamento.id ? `Editando Orçamento: ${orcamento.cliente}` : 'Montar Novo Orçamento'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {orcamento.id && (
+                      <button
+                        type="button"
+                        onClick={() => setOrcamento({
+                          id: null, cliente: '', tel: '', endereco: '', tipo_cliente: 'Residencial',
+                          forma_pgto: 'Pix / Dinheiro (À Vista)', itens: [{ desc: '', qtd: 1, valor: 0 }],
+                          obs: 'Validade: 7 dias. Garantia de 90 dias.'
+                        })}
+                        className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
+                      >
+                        <X size={14} /> Limpar
+                      </button>
+                    )}
+                    {clientes.length > 0 && (
+                      <select
+                        onChange={(e) => {
+                          const cli = clientes.find((c) => c.id.toString() === e.target.value);
+                          if (cli) {
+                            setOrcamento({
+                              ...orcamento,
+                              cliente: cli.nome,
+                              tel: cli.tel || '',
+                              endereco: cli.endereco || '',
+                              tipo_cliente: cli.tipo || 'Residencial'
+                            });
+                          }
+                        }}
+                        defaultValue=""
+                        className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300"
+                      >
+                        <option value="" disabled>Puxar cliente salvo...</option>
+                        {clientes.map((c) => (
+                          <option key={c.id} value={c.id}>{c.nome}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    placeholder="Endereço Completo / Referência / Apto / Placa do Veículo"
-                    value={orcamento.endereco}
-                    onChange={(e) => setOrcamento({ ...orcamento, endereco: e.target.value })}
-                    className="sm:col-span-2 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <select
-                    value={orcamento.forma_pgto}
-                    onChange={(e) => setOrcamento({ ...orcamento, forma_pgto: e.target.value })}
-                    className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm text-amber-300 font-semibold"
-                  >
-                    <option value="Pix / Dinheiro (À Vista)">Pgto: Pix / Dinheiro (À Vista)</option>
-                    <option value="Cartão de Crédito / Débito">Pgto: Cartão de Crédito / Débito</option>
-                    <option value="Sinal 50% + Restante na Entrega">Pgto: Sinal 50% + Entrega</option>
-                    <option value="Faturado / Boleto Condomínio">Pgto: Faturado / Condomínio</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* PLANILHA DE ITENS E SERVIÇOS COTADOS */}
-              <div className="space-y-2">
-                <span className="text-xs font-bold text-amber-400 uppercase block">
-                  2. Planilha de Itens, Peças e Mão de Obra
-                </span>
-                {orcamento.itens.map((item, index) => (
-                  <div key={index} className="flex flex-col sm:flex-row gap-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-3">
+                  <span className="text-xs font-bold text-amber-400 uppercase block">1. Dados do Cliente & Local</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <input
                       type="text"
-                      placeholder="Descrição do Serviço, Fechadura ou Chave cotada"
-                      value={item.desc}
-                      onChange={(e) => atualizarItemOrcamento(index, 'desc', e.target.value)}
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                      placeholder="Nome do Cliente / Condomínio *"
+                      value={orcamento.cliente}
+                      onChange={(e) => setOrcamento({ ...orcamento, cliente: e.target.value })}
+                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
                     />
-                    <div className="flex gap-2 items-center">
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="Qtd"
-                        value={item.qtd}
-                        onChange={(e) => atualizarItemOrcamento(index, 'qtd', e.target.value)}
-                        className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                      />
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="Valor Un."
-                        value={item.valor}
-                        onChange={(e) => atualizarItemOrcamento(index, 'valor', e.target.value)}
-                        className="flex-1 sm:w-28 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                      />
-                      <span className="text-xs font-bold text-amber-400 w-24 text-right hidden sm:inline">
-                        R$ {(Number(item.qtd || 0) * Number(item.valor || 0)).toFixed(2)}
-                      </span>
-                      {orcamento.itens.length > 1 && (
-                        <button type="button" onClick={() => removerLinhaOrcamento(index)} className="text-red-400 px-2">
-                          <Trash2 size={15} />
-                        </button>
-                      )}
-                    </div>
+                    <input
+                      type="tel"
+                      placeholder="WhatsApp (com DDD)"
+                      value={orcamento.tel}
+                      onChange={(e) => setOrcamento({ ...orcamento, tel: e.target.value })}
+                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                    />
+                    <select
+                      value={orcamento.tipo_cliente}
+                      onChange={(e) => setOrcamento({ ...orcamento, tipo_cliente: e.target.value })}
+                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm text-slate-200"
+                    >
+                      <option value="Residencial">Cliente: Residencial</option>
+                      <option value="Comercial / Condomínio">Cliente: Comercial / Condomínio</option>
+                      <option value="Automotivo">Cliente: Automotivo</option>
+                    </select>
                   </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={adicionarLinhaOrcamento}
-                  className="text-xs text-amber-400 hover:underline font-semibold"
-                >
-                  + Adicionar mais uma linha na planilha do orçamento
-                </button>
-              </div>
 
-              {/* OBSERVAÇÕES / GARANTIA / PRAZO */}
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Observações, Prazo de Execução ou Garantia:</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <input
+                      type="text"
+                      placeholder="Endereço Completo / Referência / Apto / Placa"
+                      value={orcamento.endereco}
+                      onChange={(e) => setOrcamento({ ...orcamento, endereco: e.target.value })}
+                      className="sm:col-span-2 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                    />
+                    <select
+                      value={orcamento.forma_pgto}
+                      onChange={(e) => setOrcamento({ ...orcamento, forma_pgto: e.target.value })}
+                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm text-amber-300 font-semibold"
+                    >
+                      <option value="Pix / Dinheiro (À Vista)">Pgto: Pix / Dinheiro</option>
+                      <option value="Cartão de Crédito / Débito">Pgto: Cartão</option>
+                      <option value="Sinal 50% + Restante na Entrega">Pgto: Sinal 50% + Entrega</option>
+                      <option value="Faturado / Boleto Condomínio">Pgto: Faturado / Condomínio</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-xs font-bold text-amber-400 uppercase block">2. Itens e Serviços</span>
+                  {orcamento.itens.map((item, index) => (
+                    <div key={index} className="flex flex-col sm:flex-row gap-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                      <input
+                        type="text"
+                        placeholder="Serviço, Fechadura ou Chave"
+                        value={item.desc}
+                        onChange={(e) => atualizarItemOrcamento(index, 'desc', e.target.value)}
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                      />
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.qtd}
+                          onChange={(e) => atualizarItemOrcamento(index, 'qtd', e.target.value)}
+                          className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Valor Un."
+                          value={item.valor}
+                          onChange={(e) => atualizarItemOrcamento(index, 'valor', e.target.value)}
+                          className="flex-1 sm:w-28 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                        />
+                        {orcamento.itens.length > 1 && (
+                          <button type="button" onClick={() => removerLinhaOrcamento(index)} className="text-red-400 px-2">
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <button type="button" onClick={adicionarLinhaOrcamento} className="text-xs text-amber-400 hover:underline font-semibold">
+                    + Adicionar mais um item
+                  </button>
+                </div>
+
                 <input
                   type="text"
-                  placeholder="Ex: Validade de 7 dias. Garantia de 90 dias."
+                  placeholder="Observações / Garantia / Prazo"
                   value={orcamento.obs}
                   onChange={(e) => setOrcamento({ ...orcamento, obs: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200"
                 />
-              </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
-                <span className="text-lg font-bold">Total: R$ {totalOrcamento.toFixed(2)}</span>
-                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => salvarOrcamentoStandby(false)}
-                    className="flex-1 sm:flex-none bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
-                  >
-                    <FolderClock size={16} /> Salvar em Standby
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => salvarOrcamentoStandby(true)}
-                    className="flex-1 sm:flex-none bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
-                  >
-                    <Share2 size={16} /> Salvar Standby & Enviar WhatsApp
-                  </button>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3">
+                  <span className="text-lg font-bold">Total: R$ {totalOrcamento.toFixed(2)}</span>
+                  <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => salvarOrcamentoStandby(false)}
+                      className="flex-1 sm:flex-none bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <FolderClock size={16} /> Salvar em Standby
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => salvarOrcamentoStandby(true)}
+                      className="flex-1 sm:flex-none bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <Share2 size={16} /> Salvar & Enviar WhatsApp
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-bold text-amber-400 flex items-center gap-2">
-                  <FolderClock size={18} /> Fila de Orçamentos Salvos / Em Standby
-                </h3>
+                <span className="text-xs font-bold text-slate-400 uppercase">Filtrar Fila</span>
                 <div className="flex gap-1.5">
                   {[
                     { id: 'standby', label: `Aguardando (${orcamentosEmStandby.length})` },
@@ -3030,7 +3458,7 @@ export default function App() {
                       key={f.id}
                       onClick={() => setFiltroStatusOrcamento(f.id)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
-                        filtroStatusOrcamento === f.id ? 'bg-amber-500 text-slate-950' : 'bg-slate-950 text-slate-400 border border-slate-800'
+                        filtroStatusOrcamento === f.id ? temaUnidade.botaoAtivo : 'bg-slate-950 text-slate-400 border border-slate-800'
                       }`}
                     >
                       {f.label}
@@ -3078,7 +3506,7 @@ export default function App() {
                                 onClick={() => aprovarOrcamentoVirarOS(orc)}
                                 className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1"
                               >
-                                <ShieldCheck size={13} /> Aprovar & Virar OS
+                                <ShieldCheck size={13} /> Virar OS
                               </button>
                             )}
                             <button
@@ -3087,18 +3515,10 @@ export default function App() {
                             >
                               <Share2 size={12} /> WhatsApp
                             </button>
-                            <button
-                              onClick={() => carregarOrcamentoParaEdicao(orc)}
-                              className="bg-slate-800 text-amber-400 p-1.5 rounded-lg"
-                              title="Editar este orçamento"
-                            >
+                            <button onClick={() => carregarOrcamentoParaEdicao(orc)} className="bg-slate-800 text-amber-400 p-1.5 rounded-lg">
                               <Edit2 size={14} />
                             </button>
-                            <button
-                              onClick={() => excluirOrcamentoSalvo(orc.id)}
-                              className="bg-slate-800 text-red-400 p-1.5 rounded-lg"
-                              title="Excluir orçamento"
-                            >
+                            <button onClick={() => excluirOrcamentoSalvo(orc.id)} className="bg-slate-800 text-red-400 p-1.5 rounded-lg">
                               <Trash2 size={14} />
                             </button>
                           </div>
@@ -3111,9 +3531,9 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 6: CAIXA & AGENDA DE BOLETOS ================= */}
+        {/* ================= ABA 6: CAIXA (COM FUNDO DE TROCO FIXO) & AGENDA DE BOLETOS ================= */}
         {abaAtiva === 'caixa' && (
-          <div className="space-y-6">
+          <div className="space-y-5">
             <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 {[
@@ -3128,7 +3548,7 @@ export default function App() {
                     onClick={() => setFiltroPeriodoCaixa(periodo.id)}
                     className={`px-3 py-2 rounded-lg text-xs font-bold transition ${
                       filtroPeriodoCaixa === periodo.id
-                        ? 'bg-amber-500 text-slate-950'
+                        ? temaUnidade.botaoAtivo
                         : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
                     }`}
                   >
@@ -3136,15 +3556,23 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              <button
-                onClick={exportarCSVRelatorio}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 border border-slate-700"
-              >
-                <Download size={14} /> Baixar CSV
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => abrirPortalNFSe()}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5"
+                >
+                  <Receipt size={14} /> NFS-e <ExternalLink size={11} />
+                </button>
+                <button
+                  onClick={exportarCSVRelatorio}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 border border-slate-700"
+                >
+                  <Download size={14} /> CSV
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
                 <span className="text-xs text-slate-400">Entradas Brutas</span>
                 <p className="text-lg sm:text-xl font-bold text-emerald-400 mt-1">R$ {totalEntradas.toFixed(2)}</p>
@@ -3154,7 +3582,7 @@ export default function App() {
                 <p className="text-lg sm:text-xl font-bold text-red-400 mt-1">R$ {totalSaidas.toFixed(2)}</p>
               </div>
               <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Saldo em Caixa</span>
+                <span className="text-xs text-slate-400">Saldo Operacional</span>
                 <p className={`text-lg sm:text-xl font-bold mt-1 ${saldoLiquido >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
                   R$ {saldoLiquido.toFixed(2)}
                 </p>
@@ -3166,6 +3594,17 @@ export default function App() {
                 </p>
                 <span className="text-[10px] text-slate-500">Chaves + Taxas: R$ {custoInsumosPeriodo.toFixed(2)}</span>
               </div>
+              <div
+                onClick={() => setModalConfigUnidades(true)}
+                className="col-span-2 lg:col-span-1 cursor-pointer bg-emerald-950/30 hover:border-emerald-500/60 transition p-3.5 rounded-xl border border-emerald-800/70"
+                title="Toque para ajustar o valor do Fundo de Troco"
+              >
+                <span className="text-xs text-emerald-300 font-semibold flex items-center justify-between">
+                  Gaveta Física <Edit2 size={11} />
+                </span>
+                <p className="text-lg sm:text-xl font-bold text-emerald-400 mt-1">R$ {totalGavetaFisica.toFixed(2)}</p>
+                <span className="text-[10px] text-slate-400">Troco R$ {fundoTrocoAtual.toFixed(0)} + Dinheiro</span>
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-800 text-xs">
@@ -3174,7 +3613,7 @@ export default function App() {
                 <strong className="text-emerald-400">R$ {entradasPix.toFixed(2)}</strong>
               </div>
               <div>
-                <span className="text-slate-400 block">Dinheiro:</span>
+                <span className="text-slate-400 block">Dinheiro (Vendas):</span>
                 <strong className="text-amber-400">R$ {entradasDinheiro.toFixed(2)}</strong>
               </div>
               <div>
@@ -3183,57 +3622,67 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-                <h3 className="font-bold text-amber-400">Movimentações do Caixa ({transacoesFiltradas.length})</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className={`font-bold text-sm ${temaUnidade.textoDestaque}`}>Movimentações ({transacoesFiltradas.length})</h3>
+                  <button
+                    onClick={() => toggleForm('caixa')}
+                    className={`${temaUnidade.botaoAtivo} text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1`}
+                  >
+                    {formAberto.caixa ? <><X size={13} /> Fechar</> : <><Plus size={13} /> Lançar Avulso</>}
+                  </button>
+                </div>
 
-                <form onSubmit={adicionarTransacaoManual} className="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <div className="grid grid-cols-2 gap-2">
-                    <select
-                      value={novaTransacao.tipo}
-                      onChange={(e) => setNovaTransacao({ ...novaTransacao, tipo: e.target.value })}
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-xs font-bold"
-                    >
-                      <option value="saida">Saída / Despesa (-)</option>
-                      <option value="entrada">Entrada Avulsa (+)</option>
-                    </select>
-                    <select
-                      value={novaTransacao.forma}
-                      onChange={(e) => setNovaTransacao({ ...novaTransacao, forma: e.target.value })}
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-xs"
-                    >
-                      <option>Pix</option>
-                      <option>Dinheiro</option>
-                      <option>Cartão de Débito</option>
-                      <option>Cartão de Crédito</option>
-                      <option>A Receber (Fiado)</option>
-                    </select>
-                  </div>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <input
-                      type="text"
-                      placeholder="Descrição (Ex: Compra de chaves / Gasolina)"
-                      required
-                      value={novaTransacao.desc}
-                      onChange={(e) => setNovaTransacao({ ...novaTransacao, desc: e.target.value })}
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                    />
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        placeholder="Valor R$"
-                        required
-                        value={novaTransacao.valor}
-                        onChange={(e) => setNovaTransacao({ ...novaTransacao, valor: e.target.value })}
-                        className="w-28 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                      />
-                      <button type="submit" className="flex-1 sm:flex-none bg-amber-500 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs">
-                        Lançar
-                      </button>
+                {formAberto.caixa && (
+                  <form onSubmit={adicionarTransacaoManual} className="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-700">
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={novaTransacao.tipo}
+                        onChange={(e) => setNovaTransacao({ ...novaTransacao, tipo: e.target.value })}
+                        className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs font-bold"
+                      >
+                        <option value="saida">Saída / Despesa (-)</option>
+                        <option value="entrada">Entrada Avulsa (+)</option>
+                      </select>
+                      <select
+                        value={novaTransacao.forma}
+                        onChange={(e) => setNovaTransacao({ ...novaTransacao, forma: e.target.value })}
+                        className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                      >
+                        <option>Pix</option>
+                        <option>Dinheiro</option>
+                        <option>Cartão de Débito</option>
+                        <option>Cartão de Crédito</option>
+                        <option>A Receber (Fiado)</option>
+                      </select>
                     </div>
-                  </div>
-                </form>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        placeholder="Descrição (Ex: Compra de chaves)"
+                        required
+                        value={novaTransacao.desc}
+                        onChange={(e) => setNovaTransacao({ ...novaTransacao, desc: e.target.value })}
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Valor R$"
+                          required
+                          value={novaTransacao.valor}
+                          onChange={(e) => setNovaTransacao({ ...novaTransacao, valor: e.target.value })}
+                          className="w-28 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                        />
+                        <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2 rounded-lg text-xs`}>
+                          Salvar
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
 
                 <div className="space-y-2.5 max-h-[460px] overflow-y-auto">
                   {transacoesFiltradas.map((t) => (
@@ -3277,16 +3726,10 @@ export default function App() {
                               className="w-32 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-amber-400"
                             />
                             <div className="flex gap-2">
-                              <button
-                                onClick={salvarEdicaoTransacao}
-                                className="bg-emerald-500 text-slate-950 font-bold px-3 py-2 rounded-lg flex items-center gap-1"
-                              >
+                              <button onClick={salvarEdicaoTransacao} className="bg-emerald-500 text-slate-950 font-bold px-3 py-2 rounded-lg flex items-center gap-1">
                                 <Check size={14} /> Salvar
                               </button>
-                              <button
-                                onClick={() => setTransacaoEditando(null)}
-                                className="bg-slate-800 text-slate-300 px-3 py-2 rounded-lg flex items-center gap-1"
-                              >
+                              <button onClick={() => setTransacaoEditando(null)} className="bg-slate-800 text-slate-300 px-3 py-2 rounded-lg flex items-center gap-1">
                                 <X size={14} /> Cancelar
                               </button>
                             </div>
@@ -3300,29 +3743,29 @@ export default function App() {
                               {t.data} • {t.forma} {unidadeAtiva === 'todas' ? `• ${(t.unidade || 'ponto1').toUpperCase()}` : ''}
                             </span>
                           </div>
-                          <div className="flex items-center justify-between border-t border-slate-900 pt-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-2">
                             <span className={`text-sm font-bold ${t.tipo === 'entrada' ? (t.forma === 'A Receber (Fiado)' ? 'text-purple-400' : 'text-emerald-400') : 'text-red-400'}`}>
                               {t.tipo === 'entrada' ? '+' : '-'} R$ {Number(t.valor).toFixed(2)}
                             </span>
-                            <div className="flex items-center gap-2">
-                              {t.forma === 'A Receber (Fiado)' && (
+                            <div className="flex items-center gap-1.5">
+                              {t.tipo === 'entrada' && (
                                 <button
-                                  onClick={() => quitarPendenciaReceber(t)}
-                                  className="bg-purple-600 hover:bg-purple-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold"
+                                  onClick={() => abrirPortalNFSe({ cliente: 'Cliente', desc: t.desc, valor: t.valor })}
+                                  className="bg-indigo-950 hover:bg-indigo-900 text-indigo-300 px-2 py-1.5 rounded-lg border border-indigo-800 flex items-center gap-1 text-[11px] font-semibold"
+                                  title="Copiar dados e abrir Portal NFS-e"
                                 >
-                                  Receber Fiado
+                                  <Receipt size={12} /> NFS-e
                                 </button>
                               )}
-                              <button
-                                onClick={() => setTransacaoEditando({ ...t })}
-                                className="bg-slate-900 hover:bg-slate-800 text-amber-400 px-2.5 py-1.5 rounded-lg border border-slate-800 flex items-center gap-1"
-                              >
-                                <Edit2 size={13} /> Editar
+                              {t.forma === 'A Receber (Fiado)' && (
+                                <button onClick={() => quitarPendenciaReceber(t)} className="bg-purple-600 hover:bg-purple-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold">
+                                  Receber
+                                </button>
+                              )}
+                              <button onClick={() => setTransacaoEditando({ ...t })} className="bg-slate-900 text-amber-400 p-1.5 rounded-lg border border-slate-800">
+                                <Edit2 size={13} />
                               </button>
-                              <button
-                                onClick={() => excluirTransacao(t.id)}
-                                className="bg-slate-900 hover:bg-slate-800 text-red-400 px-2.5 py-1.5 rounded-lg border border-slate-800"
-                              >
+                              <button onClick={() => excluirTransacao(t.id)} className="bg-slate-900 text-red-400 p-1.5 rounded-lg border border-slate-800">
                                 <Trash2 size={13} />
                               </button>
                             </div>
@@ -3334,45 +3777,50 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-                <div>
-                  <h3 className="font-bold text-amber-400">Calendário de Boletos & Obrigações</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Você pode dar baixa apenas para organizar sua agenda (sem descontar do caixa) ou optar por debitar do caixa.
-                  </p>
+              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className={`font-bold text-sm ${temaUnidade.textoDestaque}`}>Calendário de Boletos ({contasUnidade.length})</h3>
+                  <button
+                    onClick={() => toggleForm('boleto')}
+                    className={`${temaUnidade.botaoAtivo} text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1`}
+                  >
+                    {formAberto.boleto ? <><X size={13} /> Fechar</> : <><Plus size={13} /> Agendar Boleto</>}
+                  </button>
                 </div>
 
-                <form onSubmit={criarContaPagar} className="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
-                  <input
-                    type="text"
-                    placeholder="Descrição do Boleto / Fornecedor / Aluguel *"
-                    required
-                    value={novaConta.desc}
-                    onChange={(e) => setNovaConta({ ...novaConta, desc: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <div className="flex gap-2">
+                {formAberto.boleto && (
+                  <form onSubmit={criarContaPagar} className="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-700">
                     <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Valor R$ *"
+                      type="text"
+                      placeholder="Descrição do Boleto / Fornecedor / Aluguel *"
                       required
-                      value={novaConta.valor}
-                      onChange={(e) => setNovaConta({ ...novaConta, valor: e.target.value })}
-                      className="w-32 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                      value={novaConta.desc}
+                      onChange={(e) => setNovaConta({ ...novaConta, desc: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
                     />
-                    <input
-                      type="date"
-                      required
-                      value={novaConta.vencimento}
-                      onChange={(e) => setNovaConta({ ...novaConta, vencimento: e.target.value })}
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                    />
-                    <button type="submit" className="bg-amber-500 text-slate-950 font-bold px-4 rounded-lg text-xs">
-                      + Agendar
-                    </button>
-                  </div>
-                </form>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="Valor R$ *"
+                        required
+                        value={novaConta.valor}
+                        onChange={(e) => setNovaConta({ ...novaConta, valor: e.target.value })}
+                        className="w-32 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                      />
+                      <input
+                        type="date"
+                        required
+                        value={novaConta.vencimento}
+                        onChange={(e) => setNovaConta({ ...novaConta, vencimento: e.target.value })}
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
+                      />
+                      <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold px-4 rounded-lg text-xs`}>
+                        Salvar
+                      </button>
+                    </div>
+                  </form>
+                )}
 
                 <div className="space-y-2.5 max-h-[460px] overflow-y-auto">
                   {contasUnidade.map((c) => {
@@ -3395,24 +3843,15 @@ export default function App() {
                         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-2">
                           {c.status === 'pendente' ? (
                             <div className="flex flex-wrap gap-1.5">
-                              <button
-                                onClick={() => darBaixaBoleto(c, false)}
-                                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-2.5 py-1.5 rounded-lg text-xs"
-                              >
+                              <button onClick={() => darBaixaBoleto(c, false)} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-2.5 py-1.5 rounded-lg text-xs">
                                 Só Marcar Pago (Sem Caixa)
                               </button>
-                              <button
-                                onClick={() => darBaixaBoleto(c, true)}
-                                className="bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold px-2.5 py-1.5 rounded-lg text-xs border border-slate-700"
-                              >
-                                Pagar c/ Caixa da Loja
+                              <button onClick={() => darBaixaBoleto(c, true)} className="bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold px-2.5 py-1.5 rounded-lg text-xs border border-slate-700">
+                                Pagar c/ Caixa
                               </button>
                             </div>
                           ) : (
-                            <button
-                              onClick={() => reabrirBoleto(c)}
-                              className="text-emerald-400 font-bold hover:underline"
-                            >
+                            <button onClick={() => reabrirBoleto(c)} className="text-emerald-400 font-bold hover:underline">
                               Quitado na Agenda (Toque p/ reabrir)
                             </button>
                           )}
@@ -3429,17 +3868,29 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 7: ESTOQUE MOBILE-FIRST ================= */}
+        {/* ================= ABA 7: ESTOQUE ================= */}
         {abaAtiva === 'estoque' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
+                Estoque — {infoUnidadeAtual.nome} ({estoqueUnidade.length})
+              </h2>
+              <button
+                onClick={() => toggleForm('estoque')}
+                className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow`}
+              >
+                {formAberto.estoque ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Cadastrar Chave / Produto</>}
+              </button>
+            </div>
+
             {itensEstoqueBaixo.length > 0 && (
               <div className="bg-red-950/50 border border-red-800 p-3 rounded-xl flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs text-red-300 font-medium">
-                  Alerta: <strong>{itensEstoqueBaixo.length} modelo(s)</strong> atingiram o estoque mínimo nesta unidade.
+                  Alerta: <strong>{itensEstoqueBaixo.length} modelo(s)</strong> atingiram o estoque mínimo.
                 </span>
                 <div className="flex gap-2">
                   <button onClick={gerarPedidoDistribuidorWhatsApp} className="bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
-                    <Share2 size={13} /> Gerar Pedido WhatsApp
+                    <Share2 size={13} /> Pedido WhatsApp
                   </button>
                   <button onClick={() => setApenasEstoqueBaixo(!apenasEstoqueBaixo)} className="bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg">
                     {apenasEstoqueBaixo ? 'Ver Todos' : 'Filtrar Baixos'}
@@ -3463,94 +3914,41 @@ export default function App() {
               </div>
             </div>
 
-            <form onSubmit={salvarNovaChave} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="font-bold text-amber-400 text-sm sm:text-base">
-                  {editandoEstoqueId ? `Editando Item: ${editandoEstoqueId}` : `Cadastrar Chave / Produto (${infoUnidadeAtual.nome})`}
-                </h2>
-                {editandoEstoqueId && (
-                  <button type="button" onClick={cancelarEdicaoEstoque} className="text-xs text-slate-400 flex items-center gap-1">
-                    <X size={14} /> Cancelar
-                  </button>
-                )}
-              </div>
+            {formAberto.estoque && (
+              <form onSubmit={salvarNovaChave} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-400 text-sm">
+                    {editandoEstoqueId ? `Editando Item: ${editandoEstoqueId}` : 'Cadastrar Novo Item'}
+                  </span>
+                  {editandoEstoqueId && (
+                    <button type="button" onClick={cancelarEdicaoEstoque} className="text-xs text-slate-400 flex items-center gap-1">
+                      <X size={14} /> Cancelar Edição
+                    </button>
+                  )}
+                </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
-                <input
-                  type="text"
-                  placeholder="Código (Ex: Y1)"
-                  value={novaChave.id}
-                  disabled={!!editandoEstoqueId}
-                  onChange={(e) => setNovaChave({ ...novaChave, id: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm disabled:opacity-50"
-                />
-                <input
-                  type="text"
-                  placeholder="Nome da Chave / Fechadura *"
-                  required
-                  value={novaChave.nome}
-                  onChange={(e) => setNovaChave({ ...novaChave, nome: e.target.value })}
-                  className="col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <select
-                  value={novaChave.cat}
-                  onChange={(e) => setNovaChave({ ...novaChave, cat: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                >
-                  <option>Yale / Comum</option>
-                  <option>Tetra</option>
-                  <option>Automotiva / Canivete</option>
-                  <option>Multiponto</option>
-                  <option>Gorge / Antiga</option>
-                  <option>Fechaduras / Cadeados</option>
-                </select>
-                <input
-                  type="number"
-                  placeholder="Qtd"
-                  value={novaChave.qtd}
-                  onChange={(e) => setNovaChave({ ...novaChave, qtd: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Custo R$"
-                  value={novaChave.custo}
-                  onChange={(e) => setNovaChave({ ...novaChave, custo: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Venda R$ *"
-                  required
-                  value={novaChave.venda}
-                  onChange={(e) => setNovaChave({ ...novaChave, venda: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-              </div>
-              <button type="submit" className="w-full sm:w-auto bg-amber-500 text-slate-950 font-bold px-5 py-2.5 rounded-lg text-sm">
-                {editandoEstoqueId ? 'Salvar Alterações' : 'Salvar no Estoque'}
-              </button>
-            </form>
-
-            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <h3 className="font-bold text-slate-200">Itens no Estoque ({estoqueFiltrado.length})</h3>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
                   <input
                     type="text"
-                    placeholder="Buscar código ou nome..."
-                    value={buscaEstoque}
-                    onChange={(e) => setBuscaEstoque(e.target.value)}
-                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                    placeholder="Código (Ex: Y1)"
+                    value={novaChave.id}
+                    disabled={!!editandoEstoqueId}
+                    onChange={(e) => setNovaChave({ ...novaChave, id: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm disabled:opacity-50"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Nome da Chave / Fechadura *"
+                    required
+                    value={novaChave.nome}
+                    onChange={(e) => setNovaChave({ ...novaChave, nome: e.target.value })}
+                    className="col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
                   />
                   <select
-                    value={filtroCatEstoque}
-                    onChange={(e) => setFiltroCatEstoque(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-xs"
+                    value={novaChave.cat}
+                    onChange={(e) => setNovaChave({ ...novaChave, cat: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
                   >
-                    <option value="Todas">Todas</option>
                     <option>Yale / Comum</option>
                     <option>Tetra</option>
                     <option>Automotiva / Canivete</option>
@@ -3558,7 +3956,70 @@ export default function App() {
                     <option>Gorge / Antiga</option>
                     <option>Fechaduras / Cadeados</option>
                   </select>
+                  <input
+                    type="number"
+                    placeholder="Qtd"
+                    value={novaChave.qtd}
+                    onChange={(e) => setNovaChave({ ...novaChave, qtd: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Custo R$"
+                    value={novaChave.custo}
+                    onChange={(e) => setNovaChave({ ...novaChave, custo: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Venda R$ *"
+                    required
+                    value={novaChave.venda}
+                    onChange={(e) => setNovaChave({ ...novaChave, venda: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
                 </div>
+                <button type="submit" className={`w-full sm:w-auto ${temaUnidade.botaoAtivo} font-bold px-5 py-2.5 rounded-lg text-sm`}>
+                  {editandoEstoqueId ? 'Salvar Alterações' : 'Salvar no Estoque'}
+                </button>
+              </form>
+            )}
+
+            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    placeholder="Buscar código ou nome..."
+                    value={buscaEstoque}
+                    onChange={(e) => setBuscaEstoque(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-3 pr-9 py-2 text-xs"
+                  />
+                  {buscaEstoque && (
+                    <button
+                      type="button"
+                      onClick={() => setBuscaEstoque('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <select
+                  value={filtroCatEstoque}
+                  onChange={(e) => setFiltroCatEstoque(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
+                >
+                  <option value="Todas">Todas as Categorias</option>
+                  <option>Yale / Comum</option>
+                  <option>Tetra</option>
+                  <option>Automotiva / Canivete</option>
+                  <option>Multiponto</option>
+                  <option>Gorge / Antiga</option>
+                  <option>Fechaduras / Cadeados</option>
+                </select>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -3604,55 +4065,85 @@ export default function App() {
           </div>
         )}
 
-        {/* ================= ABA 8: CRM DE CLIENTES UNIFICADO ================= */}
+        {/* ================= ABA 8: CRM DE CLIENTES (COM EDIÇÃO COMPLETA) ================= */}
         {abaAtiva === 'clientes' && (
-          <div className="space-y-6">
-            <form onSubmit={criarCliente} className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-              <h2 className="font-bold text-amber-400">Cadastrar Cliente Manualmente</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                <input
-                  type="text"
-                  placeholder="Nome / Referência *"
-                  required
-                  value={novoCliente.nome}
-                  onChange={(e) => setNovoCliente({ ...novoCliente, nome: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <input
-                  type="tel"
-                  placeholder="WhatsApp (com DDD)"
-                  value={novoCliente.tel}
-                  onChange={(e) => setNovoCliente({ ...novoCliente, tel: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <input
-                  type="text"
-                  placeholder="Endereço"
-                  value={novoCliente.endereco}
-                  onChange={(e) => setNovoCliente({ ...novoCliente, endereco: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-                <select
-                  value={novoCliente.tipo}
-                  onChange={(e) => setNovoCliente({ ...novoCliente, tipo: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                >
-                  <option>Residencial</option>
-                  <option>Comercial / Condomínio</option>
-                  <option>Automotivo</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder="Obs (Placa / Fechadura)"
-                  value={novoCliente.obs}
-                  onChange={(e) => setNovoCliente({ ...novoCliente, obs: e.target.value })}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                />
-              </div>
-              <button type="submit" className="bg-amber-500 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-sm">
-                Guardar Cliente
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
+                Base de Clientes ({clientes.length})
+              </h2>
+              <button
+                onClick={() => {
+                  if (formAberto.cliente) {
+                    cancelarEdicaoCliente();
+                  } else {
+                    setNovoCliente({ id: null, nome: '', tel: '', endereco: '', tipo: 'Residencial', obs: '' });
+                    toggleForm('cliente', true);
+                  }
+                }}
+                className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow`}
+              >
+                {formAberto.cliente ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Cadastrar Cliente</>}
               </button>
-            </form>
+            </div>
+
+            {formAberto.cliente && (
+              <form onSubmit={salvarCliente} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase text-amber-400">
+                    {novoCliente.id ? `Editando Cliente: ${novoCliente.nome}` : 'Novo Cadastro de Cliente'}
+                  </span>
+                  {novoCliente.id && (
+                    <button type="button" onClick={cancelarEdicaoCliente} className="text-xs text-slate-400 hover:text-white flex items-center gap-1">
+                      <X size={14} /> Cancelar Edição
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  <input
+                    type="text"
+                    placeholder="Nome / Referência *"
+                    required
+                    value={novoCliente.nome}
+                    onChange={(e) => setNovoCliente({ ...novoCliente, nome: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="WhatsApp (com DDD)"
+                    value={novoCliente.tel}
+                    onChange={(e) => setNovoCliente({ ...novoCliente, tel: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Endereço Completo"
+                    value={novoCliente.endereco}
+                    onChange={(e) => setNovoCliente({ ...novoCliente, endereco: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                  <select
+                    value={novoCliente.tipo}
+                    onChange={(e) => setNovoCliente({ ...novoCliente, tipo: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  >
+                    <option>Residencial</option>
+                    <option>Comercial / Condomínio</option>
+                    <option>Automotivo</option>
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Obs (CPF/CNPJ, Placa, Fechadura)"
+                    value={novoCliente.obs}
+                    onChange={(e) => setNovoCliente({ ...novoCliente, obs: e.target.value })}
+                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
+                  />
+                </div>
+                <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold px-5 py-2.5 rounded-lg text-sm`}>
+                  {novoCliente.id ? 'Salvar Alterações do Cliente' : 'Guardar Cliente'}
+                </button>
+              </form>
+            )}
 
             {clienteHistoricoSelecionado && (
               <div className="bg-slate-900 p-4 rounded-xl border-2 border-amber-500 space-y-3">
@@ -3681,29 +4172,54 @@ export default function App() {
             )}
 
             <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="Pesquisar cliente por nome, telefone ou observação..."
-                value={buscaClienteCrm}
-                onChange={(e) => setBuscaClienteCrm(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Pesquisar cliente por nome, telefone ou observação..."
+                  value={buscaClienteCrm}
+                  onChange={(e) => setBuscaClienteCrm(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-4 pr-10 py-2.5 text-sm"
+                />
+                {buscaClienteCrm && (
+                  <button
+                    type="button"
+                    onClick={() => setBuscaClienteCrm('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {clientes
                   .filter((c) => c.nome.toLowerCase().includes(buscaClienteCrm.toLowerCase()) || (c.tel || '').includes(buscaClienteCrm) || (c.obs || '').toLowerCase().includes(buscaClienteCrm.toLowerCase()))
                   .map((c) => (
                     <div key={c.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between gap-3">
-                      <div className="flex justify-between items-start">
-                        <div>
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0">
                           <span className="text-[10px] bg-slate-800 text-amber-400 px-2 py-0.5 rounded">{c.tipo}</span>
-                          <h3 className="font-bold text-base mt-1">{c.nome}</h3>
+                          <h3 className="font-bold text-base mt-1 truncate">{c.nome}</h3>
                           <p className="text-xs text-slate-400 mt-1 flex items-center gap-1"><Phone size={12} /> {c.tel || 'Sem telefone'}</p>
                           <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><MapPin size={12} /> {c.endereco || 'Sem endereço'}</p>
-                          {c.obs && <p className="text-xs text-amber-300/80 mt-1">{c.obs}</p>}
+                          {c.obs && <p className="text-xs text-amber-300/80 mt-1 break-words">{c.obs}</p>}
                         </div>
-                        <button onClick={() => excluirCliente(c.id)} className="text-red-400 p-1">
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => iniciarEdicaoCliente(c)}
+                            className="bg-slate-950 hover:bg-slate-800 text-amber-400 p-1.5 rounded-lg border border-slate-800"
+                            title="Editar dados do cliente"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                          <button
+                            onClick={() => excluirCliente(c.id)}
+                            className="bg-slate-950 hover:bg-slate-800 text-red-400 p-1.5 rounded-lg border border-slate-800"
+                            title="Excluir cliente"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </div>
                       <button
                         onClick={() => setClienteHistoricoSelecionado(c)}
@@ -3734,7 +4250,7 @@ export default function App() {
               key={item.id}
               onClick={() => setAbaAtiva(item.id)}
               className={`flex flex-col items-center justify-center py-1.5 rounded-lg text-[10px] font-bold ${
-                abaAtiva === item.id ? 'text-amber-400 bg-slate-800/80' : 'text-slate-400'
+                abaAtiva === item.id ? `${temaUnidade.textoDestaque} bg-slate-800/80` : 'text-slate-400'
               }`}
             >
               <Icone size={17} />
