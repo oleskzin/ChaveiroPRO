@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './supabase';
 import { montarURLWhatsAppSeguro } from './utils/formatters';
+import ConfirmModal from './components/ConfirmModal';
+import ModalFechamento from './components/ModalFechamento';
 import { 
   Wrench, Package, DollarSign, Calendar, Users, FileText, 
   Plus, Trash2, Edit2, CheckCircle, Search, Phone, 
   MapPin, RefreshCw, ShoppingCart, Share2, AlertCircle, X, Check, 
   LayoutDashboard, Download, ShieldCheck, Zap, Clock, Award, Calculator, 
   Settings, CreditCard, UserCheck, Send, FolderClock, UserPlus, ChevronUp, 
-  ExternalLink, Receipt, Lock, ClipboardCheck, Copy
+  ExternalLink, Receipt, ClipboardCheck
 } from 'lucide-react';
 
 export default function App() {
@@ -22,6 +24,11 @@ export default function App() {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ mensagem, tipo });
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+  };
+
+  const [confirmacao, setConfirmacao] = useState(null);
+  const pedirConfirmacao = (titulo, mensagem, onConfirmar, textoBotao = 'Excluir', perigo = true) => {
+    setConfirmacao({ titulo, mensagem, onConfirmar, textoBotao, perigo });
   };
 
   const [formAberto, setFormAberto] = useState({
@@ -206,7 +213,8 @@ export default function App() {
         { data: tab },
         { data: uni },
         { data: orcs },
-        { data: funcs }
+        { data: funcs },
+        { data: fech }
       ] = await Promise.all([
         supabase.from('estoque').select('*').order('nome', { ascending: true }),
         supabase.from('transacoes').select('*').order('timestamp', { ascending: false }),
@@ -217,7 +225,8 @@ export default function App() {
         supabase.from('tabela_precos').select('*').order('id', { ascending: true }),
         supabase.from('unidades_config').select('*').order('id', { ascending: true }),
         supabase.from('orcamentos').select('*').order('id', { ascending: false }),
-        supabase.from('funcionarios').select('*').order('nome', { ascending: true })
+        supabase.from('funcionarios').select('*').order('nome', { ascending: true }),
+        supabase.from('fechamentos_caixa').select('*').order('id', { ascending: false }).limit(30)
       ]);
 
       if (errEst) throw errEst;
@@ -249,6 +258,10 @@ export default function App() {
         setFuncionarios(funcs);
         localStorage.setItem('luisinho_funcionarios', JSON.stringify(funcs));
       }
+      if (fech && fech.length > 0) {
+        setHistoricoFechamentos(fech);
+        localStorage.setItem('luisinho_fechamentos_caixa', JSON.stringify(fech));
+      }
     } catch (err) {
       console.error('Erro ao buscar dados:', err);
       setErroConexao(err.message || 'Falha ao conectar com o Supabase.');
@@ -260,7 +273,7 @@ export default function App() {
   useEffect(() => {
     carregarDados(false);
     const canal = supabase
-      .channel('sincronizacao_luisinho_v33')
+      .channel('sincronizacao_luisinho_v34')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
         carregarDados(true);
       })
@@ -284,6 +297,7 @@ export default function App() {
         setTransacaoEditando(null);
         setComandaMobileAberta(false);
         setModalFechamentoCaixa(false);
+        setConfirmacao(null);
         setEditandoEstoqueId(null);
       }
     };
@@ -482,13 +496,14 @@ export default function App() {
     mostrarToast('Funcionário salvo com sucesso!');
   };
 
-  const removerFuncionario = async (id) => {
-    if (!window.confirm('Remover este funcionário da lista?')) return;
-    const novaLista = funcionarios.filter((f) => f.id !== id);
-    setFuncionarios(novaLista);
-    localStorage.setItem('luisinho_funcionarios', JSON.stringify(novaLista));
-    await supabase.from('funcionarios').delete().eq('id', id);
-    mostrarToast('Funcionário removido.');
+  const removerFuncionario = (id) => {
+    pedirConfirmacao('Remover Funcionário', 'Remover este funcionário da lista?', async () => {
+      const novaLista = funcionarios.filter((f) => f.id !== id);
+      setFuncionarios(novaLista);
+      localStorage.setItem('luisinho_funcionarios', JSON.stringify(novaLista));
+      await supabase.from('funcionarios').delete().eq('id', id);
+      mostrarToast('Funcionário removido.');
+    });
   };
 
   const salvarConfigUnidades = async (e) => {
@@ -816,11 +831,12 @@ export default function App() {
     carregarDados(true);
   };
 
-  const excluirItemTabelaPrecos = async (id) => {
-    if (!window.confirm('Excluir este item da tabela?')) return;
-    await supabase.from('tabela_precos').delete().eq('id', id);
-    mostrarToast('Item removido da tabela.');
-    carregarDados(true);
+  const excluirItemTabelaPrecos = (id) => {
+    pedirConfirmacao('Excluir Item da Tabela', 'Remover este item da tabela de preços?', async () => {
+      await supabase.from('tabela_precos').delete().eq('id', id);
+      mostrarToast('Item removido da tabela.');
+      carregarDados(true);
+    });
   };
 
   const salvarNovaChave = async (e) => {
@@ -880,11 +896,12 @@ export default function App() {
     carregarDados(true);
   };
 
-  const excluirItemEstoque = async (id) => {
-    if (!window.confirm('Remover este item do estoque?')) return;
-    await supabase.from('estoque').delete().eq('id', id);
-    mostrarToast('Item removido do estoque.');
-    carregarDados(true);
+  const excluirItemEstoque = (id) => {
+    pedirConfirmacao('Remover do Estoque', 'Tem certeza que deseja remover este item do estoque?', async () => {
+      await supabase.from('estoque').delete().eq('id', id);
+      mostrarToast('Item removido do estoque.');
+      carregarDados(true);
+    });
   };
 
   const itensEstoqueBaixo = estoqueUnidade.filter((i) => Number(i.qtd) <= Number(i.minimo || 3));
@@ -1067,11 +1084,12 @@ export default function App() {
     carregarDados(true);
   };
 
-  const excluirOS = async (id) => {
-    if (!window.confirm('Excluir esta Ordem de Serviço?')) return;
-    await supabase.from('ordens_servico').delete().eq('id', id);
-    mostrarToast('OS excluída.');
-    carregarDados(true);
+  const excluirOS = (id) => {
+    pedirConfirmacao('Excluir Ordem de Serviço', 'Deseja excluir permanentemente esta OS?', async () => {
+      await supabase.from('ordens_servico').delete().eq('id', id);
+      mostrarToast('OS excluída.');
+      carregarDados(true);
+    });
   };
 
   const adicionarMaterialNoSocorro = () => {
@@ -1209,11 +1227,12 @@ export default function App() {
     carregarDados(true);
   };
 
-  const excluirAgendamento = async (id) => {
-    if (!window.confirm('Excluir este agendamento de socorro?')) return;
-    await supabase.from('agendamentos').delete().eq('id', id);
-    mostrarToast('Socorro excluído.');
-    carregarDados(true);
+  const excluirAgendamento = (id) => {
+    pedirConfirmacao('Excluir Socorro', 'Remover este agendamento de socorro?', async () => {
+      await supabase.from('agendamentos').delete().eq('id', id);
+      mostrarToast('Socorro excluído.');
+      carregarDados(true);
+    });
   };
 
   const salvarCliente = async (e) => {
@@ -1260,14 +1279,14 @@ export default function App() {
     toggleForm('cliente', false);
   };
 
-  const excluirCliente = async (id) => {
-    if (!window.confirm('Excluir cliente?')) return;
-    await supabase.from('clientes').delete().eq('id', id);
-    if (clienteHistoricoSelecionado?.id === id) setClienteHistoricoSelecionado(null);
-    mostrarToast('Cliente removido.');
-    carregarDados(true);
+  const excluirCliente = (id) => {
+    pedirConfirmacao('Excluir Cliente', 'Remover este cliente do cadastro?', async () => {
+      await supabase.from('clientes').delete().eq('id', id);
+      if (clienteHistoricoSelecionado?.id === id) setClienteHistoricoSelecionado(null);
+      mostrarToast('Cliente removido.');
+      carregarDados(true);
+    });
   };
-
   const adicionarTransacaoManual = async (e) => {
     e.preventDefault();
     if (!novaTransacao.desc || novaTransacao.valor === '' || Number(novaTransacao.valor) <= 0) {
@@ -1307,44 +1326,50 @@ export default function App() {
     carregarDados(true);
   };
 
-  const reporTrocoAutomatico = async (valorFaltante) => {
+  const reporTrocoAutomatico = (valorFaltante) => {
     if (valorFaltante <= 0) return;
-    if (!window.confirm(`Deseja repor R$ ${valorFaltante.toFixed(2)} para o Caixa de Troco (abatendo R$ ${valorFaltante.toFixed(2)} do dinheiro faturado)?`)) return;
+    pedirConfirmacao(
+      'Recompor Caixa de Troco',
+      `Deseja transferir R$ ${valorFaltante.toFixed(2)} do dinheiro faturado para o Caixa de Troco?`,
+      async () => {
+        const agora = Date.now();
+        const saidaFaturado = {
+          id: agora,
+          tipo: 'saida',
+          origem_caixa: 'faturado',
+          desc: 'Transferência para recompor Caixa de Troco',
+          valor: Number(valorFaltante.toFixed(2)),
+          custo_insumo: 0,
+          forma: 'Dinheiro',
+          data: hojeStr,
+          timestamp: agora,
+          unidade: unidadeOperacional
+        };
+        const entradaTroco = {
+          id: agora + 1,
+          tipo: 'entrada',
+          origem_caixa: 'troco',
+          desc: '[TROCO] Reposição do fundo de troco',
+          valor: Number(valorFaltante.toFixed(2)),
+          custo_insumo: 0,
+          forma: 'Dinheiro',
+          data: hojeStr,
+          timestamp: agora + 1,
+          unidade: unidadeOperacional
+        };
 
-    const agora = Date.now();
-    const saidaFaturado = {
-      id: agora,
-      tipo: 'saida',
-      origem_caixa: 'faturado',
-      desc: 'Transferência para recompor Caixa de Troco',
-      valor: Number(valorFaltante.toFixed(2)),
-      custo_insumo: 0,
-      forma: 'Dinheiro',
-      data: hojeStr,
-      timestamp: agora,
-      unidade: unidadeOperacional
-    };
-    const entradaTroco = {
-      id: agora + 1,
-      tipo: 'entrada',
-      origem_caixa: 'troco',
-      desc: '[TROCO] Reposição do fundo de troco',
-      valor: Number(valorFaltante.toFixed(2)),
-      custo_insumo: 0,
-      forma: 'Dinheiro',
-      data: hojeStr,
-      timestamp: agora + 1,
-      unidade: unidadeOperacional
-    };
-
-    const { error } = await supabase.from('transacoes').insert([saidaFaturado, entradaTroco]);
-    if (error) {
-      const { origem_caixa: o1, ...b1 } = saidaFaturado;
-      const { origem_caixa: o2, ...b2 } = entradaTroco;
-      await supabase.from('transacoes').insert([b1, b2]);
-    }
-    mostrarToast(`Troco recomposto (+R$ ${valorFaltante.toFixed(2)})!`);
-    carregarDados(true);
+        const { error } = await supabase.from('transacoes').insert([saidaFaturado, entradaTroco]);
+        if (error) {
+          const { origem_caixa: o1, ...b1 } = saidaFaturado;
+          const { origem_caixa: o2, ...b2 } = entradaTroco;
+          await supabase.from('transacoes').insert([b1, b2]);
+        }
+        mostrarToast(`Troco recomposto (+R$ ${valorFaltante.toFixed(2)})!`);
+        carregarDados(true);
+      },
+      'Confirmar Reposição',
+      false
+    );
   };
 
   const salvarEdicaoTransacao = async () => {
@@ -1382,11 +1407,12 @@ export default function App() {
     carregarDados(true);
   };
 
-  const excluirTransacao = async (id) => {
-    if (!window.confirm('Deseja excluir este lançamento do caixa?')) return;
-    await supabase.from('transacoes').delete().eq('id', id);
-    mostrarToast('Lançamento excluído.');
-    carregarDados(true);
+  const excluirTransacao = (id) => {
+    pedirConfirmacao('Excluir Lançamento', 'Deseja excluir esta movimentação do caixa?', async () => {
+      await supabase.from('transacoes').delete().eq('id', id);
+      mostrarToast('Lançamento excluído.');
+      carregarDados(true);
+    });
   };
 
   const criarContaPagar = async (e) => {
@@ -1446,11 +1472,12 @@ export default function App() {
     carregarDados(true);
   };
 
-  const excluirContaPagar = async (id) => {
-    if (!window.confirm('Excluir este boleto da agenda?')) return;
-    await supabase.from('contas_pagar').delete().eq('id', id);
-    mostrarToast('Boleto excluído.');
-    carregarDados(true);
+  const excluirContaPagar = (id) => {
+    pedirConfirmacao('Excluir Boleto', 'Excluir este boleto da agenda?', async () => {
+      await supabase.from('contas_pagar').delete().eq('id', id);
+      mostrarToast('Boleto excluído.');
+      carregarDados(true);
+    });
   };
 
   const exportarCSVRelatorio = () => {
@@ -1589,19 +1616,34 @@ export default function App() {
     const listaAtualizada = [novoFechamento, ...historicoFechamentos].slice(0, 30);
     setHistoricoFechamentos(listaAtualizada);
     localStorage.setItem('luisinho_fechamentos_caixa', JSON.stringify(listaAtualizada));
+    await supabase.from('fechamentos_caixa').upsert([novoFechamento]);
 
     if (acao === 'copiar') {
       try {
         await navigator.clipboard.writeText(relatorioTexto);
         mostrarToast('Relatório de fechamento copiado!');
       } catch {
-        mostrarToast('Fechamento salvo no histórico!');
+        mostrarToast('Fechamento salvo!');
       }
     } else if (acao === 'whatsapp') {
       window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(relatorioTexto)}`, '_blank');
     } else {
-      mostrarToast('Fechamento diário registrado no histórico!');
+      mostrarToast('Fechamento diário salvo na nuvem!');
     }
+  };
+
+  const excluirFechamentoHistorico = (id) => {
+    pedirConfirmacao(
+      'Excluir Fechamento',
+      'Deseja apagar este relatório salvo do histórico?',
+      async () => {
+        const filtrada = historicoFechamentos.filter((f) => f.id !== id);
+        setHistoricoFechamentos(filtrada);
+        localStorage.setItem('luisinho_fechamentos_caixa', JSON.stringify(filtrada));
+        await supabase.from('fechamentos_caixa').delete().eq('id', id);
+        mostrarToast('Fechamento removido.');
+      }
+    );
   };
 
   const adicionarLinhaOrcamento = () => {
@@ -1790,11 +1832,12 @@ export default function App() {
     carregarDados(true);
   };
 
-  const excluirOrcamentoSalvo = async (id) => {
-    if (!window.confirm('Remover este orçamento da lista?')) return;
-    await supabase.from('orcamentos').delete().eq('id', id);
-    mostrarToast('Orçamento excluído.');
-    carregarDados(true);
+  const excluirOrcamentoSalvo = (id) => {
+    pedirConfirmacao('Excluir Orçamento', 'Remover este orçamento da lista?', async () => {
+      await supabase.from('orcamentos').delete().eq('id', id);
+      mostrarToast('Orçamento excluído.');
+      carregarDados(true);
+    });
   };
 
   const faturamentoHoje = transacoesUnidade
@@ -1996,6 +2039,7 @@ export default function App() {
       </div>
     </div>
   );
+
   return (
     <div className={`min-h-screen bg-slate-950 text-slate-100 flex flex-col pb-32 md:pb-8 ${temaUnidade.bordaTopo}`}>
       {toast && (
@@ -2009,6 +2053,27 @@ export default function App() {
         </div>
       )}
 
+      <ConfirmModal
+        confirmacao={confirmacao}
+        onFechar={() => setConfirmacao(null)}
+      />
+
+      <ModalFechamento
+        aberto={modalFechamentoCaixa}
+        onFechar={() => setModalFechamentoCaixa(false)}
+        hojeStr={hojeStr}
+        totalGavetaFisica={totalGavetaFisica}
+        dinheiroContado={dinheiroContadoFechamento}
+        setDinheiroContado={setDinheiroContadoFechamento}
+        obsFechamento={obsFechamento}
+        setObsFechamento={setObsFechamento}
+        textoRelatorio={gerarTextoFechamentoDiario()}
+        onSalvar={registrarESalvarFechamento}
+        historico={historicoFechamentos}
+        onExcluirHistorico={excluirFechamentoHistorico}
+        mostrarToast={mostrarToast}
+      />
+
       <header className="bg-slate-900 border-b border-slate-800 px-3 py-2.5 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -2019,7 +2084,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <h1 className={`font-bold text-base sm:text-lg leading-tight ${temaUnidade.textoDestaque}`}>Luisinho Chaveiro</h1>
                 <span className={`text-[10px] border px-1.5 py-0.5 rounded font-mono ${temaUnidade.badge}`}>
-                  v3.3
+                  v3.4
                 </span>
               </div>
               {erroConexao ? (
@@ -2197,106 +2262,6 @@ export default function App() {
                 Salvar Configurações & Fechar
               </button>
             </form>
-          </div>
-        </div>
-      )}
-
-      {modalFechamentoCaixa && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 sm:p-5 max-w-xl w-full space-y-4 my-8 shadow-2xl">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-emerald-400 flex items-center gap-2 text-base">
-                <ClipboardCheck size={20} /> Fechamento de Caixa Diário ({hojeStr})
-              </h3>
-              <button type="button" onClick={() => setModalFechamentoCaixa(false)} className="text-slate-400 hover:text-white">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800">
-              <div>
-                <label className="text-[11px] text-emerald-300 font-bold block mb-1">
-                  Conferência Física: Dinheiro Contado na Gaveta (R$)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder={`Esperado: R$ ${totalGavetaFisica.toFixed(2)}`}
-                  value={dinheiroContadoFechamento}
-                  onChange={(e) => setDinheiroContadoFechamento(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-bold"
-                />
-              </div>
-              <div>
-                <label className="text-[11px] text-slate-400 font-bold block mb-1">
-                  Observação do Fechamento (Opcional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: Tudo batendo / Troco ok"
-                  value={obsFechamento}
-                  onChange={(e) => setObsFechamento(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
-                />
-              </div>
-            </div>
-
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-64 overflow-y-auto">
-              <pre className="text-xs text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">
-                {gerarTextoFechamentoDiario()}
-              </pre>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => registrarESalvarFechamento('salvar')}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 border border-slate-700"
-              >
-                <Lock size={14} /> Salvar no Histórico
-              </button>
-              <button
-                type="button"
-                onClick={() => registrarESalvarFechamento('copiar')}
-                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5"
-              >
-                <Copy size={14} /> Salvar & Copiar
-              </button>
-              <button
-                type="button"
-                onClick={() => registrarESalvarFechamento('whatsapp')}
-                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5"
-              >
-                <Share2 size={14} /> Enviar WhatsApp
-              </button>
-            </div>
-
-            {historicoFechamentos.length > 0 && (
-              <div className="border-t border-slate-800 pt-3 space-y-2">
-                <span className="text-[11px] font-bold uppercase text-slate-400 block">
-                  Últimos Fechamentos Salvos ({historicoFechamentos.length})
-                </span>
-                <div className="max-h-32 overflow-y-auto space-y-1.5">
-                  {historicoFechamentos.slice(0, 5).map((f) => (
-                    <div key={f.id} className="bg-slate-950 px-3 py-2 rounded-lg border border-slate-800 flex items-center justify-between text-xs">
-                      <span className="text-slate-300">
-                        <strong>{f.data}</strong> às {f.hora} • {f.unidade}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try { await navigator.clipboard.writeText(f.texto); mostrarToast('Relatório antigo copiado!'); } catch {}
-                        }}
-                        className="text-amber-400 hover:underline font-semibold"
-                      >
-                        Copiar
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
