@@ -3,14 +3,20 @@ import { supabase } from './supabase';
 import { montarURLWhatsAppSeguro } from './utils/formatters';
 import ConfirmModal from './components/ConfirmModal';
 import ModalFechamento from './components/ModalFechamento';
-import ClienteAutocomplete from './components/ClienteAutocomplete';
-import { 
-  Wrench, Package, DollarSign, Calendar, Users, FileText, 
-  Plus, Trash2, Edit2, CheckCircle, Search, Phone, 
-  MapPin, RefreshCw, ShoppingCart, Share2, AlertCircle, X, Check, 
-  LayoutDashboard, Download, ShieldCheck, Zap, Clock, Award, Calculator, 
-  Settings, CreditCard, UserCheck, Send, FolderClock, UserPlus, ChevronUp, 
-  ExternalLink, Receipt, ClipboardCheck
+import AbaPDV from './components/AbaPDV';
+import AbaSimulador from './components/AbaSimulador';
+import AbaOS from './components/AbaOS';
+import AbaSocorros from './components/AbaSocorros';
+import AbaOrcamentos from './components/AbaOrcamentos';
+import AbaCaixa from './components/AbaCaixa';
+import AbaEstoque from './components/AbaEstoque';
+import AbaClientes from './components/AbaClientes';
+import {
+  Wrench, Package, DollarSign, Calendar, Users, FileText,
+  Trash2, CheckCircle, RefreshCw, ShoppingCart, Share2,
+  AlertCircle, X, LayoutDashboard, Zap, Clock, Award,
+  Calculator, Settings, UserCheck, FolderClock, ExternalLink,
+  Receipt, ClipboardCheck
 } from 'lucide-react';
 
 export default function App() {
@@ -274,7 +280,7 @@ export default function App() {
   useEffect(() => {
     carregarDados(false);
     const canal = supabase
-      .channel('sincronizacao_luisinho_v35')
+      .channel('sincronizacao_luisinho_v4')
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
         carregarDados(true);
       })
@@ -838,9 +844,7 @@ export default function App() {
       mostrarToast('Item removido da tabela.');
       carregarDados(true);
     });
-  };
-
-  const salvarNovaChave = async (e) => {
+  };const salvarNovaChave = async (e) => {
     e.preventDefault();
     if (!novaChave.nome) return;
     const idFinal = novaChave.id.trim() || `CH-${Date.now().toString().slice(-4)}`;
@@ -1288,7 +1292,8 @@ export default function App() {
       carregarDados(true);
     });
   };
-const adicionarTransacaoManual = async (e) => {
+
+  const adicionarTransacaoManual = async (e) => {
     e.preventDefault();
     if (!novaTransacao.desc || novaTransacao.valor === '' || Number(novaTransacao.valor) <= 0) {
       mostrarToast('Informe descrição e valor maior que zero.', 'erro');
@@ -1876,162 +1881,6 @@ const adicionarTransacaoManual = async (e) => {
     { id: 'clientes', label: 'Clientes', icon: Users },
   ];
 
-  const renderComandaPDV = () => (
-    <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4">
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className={`font-bold flex items-center gap-2 ${temaUnidade.textoDestaque}`}>
-            <ShoppingCart size={18} /> Comanda / Nota ({totalItensCarrinho})
-          </h2>
-          {comandaMobileAberta && (
-            <button onClick={() => setComandaMobileAberta(false)} className="lg:hidden text-slate-400 p-1">
-              <X size={20} />
-            </button>
-          )}
-        </div>
-
-        <div className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
-          <span className="text-[11px] font-bold text-slate-400 uppercase block">Cliente (Salva automático)</span>
-          <ClienteAutocomplete
-            clientes={clientes}
-            placeholder="Puxar cliente salvo..."
-            onSelecionar={(c) => {
-              setClientePdv({ ...clientePdv, nome: c.nome, tel: c.tel || '' });
-              mostrarToast(`Cliente ${c.nome} selecionado!`);
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Nome / Referência (Ex: Seu Paulinho)"
-            value={clientePdv.nome}
-            onChange={(e) => setClientePdv({ ...clientePdv, nome: e.target.value })}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input
-              type="tel"
-              placeholder="WhatsApp (com DDD)"
-              value={clientePdv.tel}
-              onChange={(e) => setClientePdv({ ...clientePdv, tel: e.target.value })}
-              className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-            />
-            <input
-              type="text"
-              placeholder="Obs / Placa / Fechadura"
-              value={clientePdv.obs}
-              onChange={(e) => setClientePdv({ ...clientePdv, obs: e.target.value })}
-              className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
-        </div>
-
-        {carrinho.length === 0 ? (
-          <p className="text-slate-500 text-xs py-6 text-center">Toque nas chaves ou serviços para montar a nota.</p>
-        ) : (
-          <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-            {carrinho.map((item, idx) => (
-              <div key={idx} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="font-semibold text-xs text-slate-100">{item.nome}</p>
-                  <button
-                    onClick={() => setCarrinho(carrinho.filter((_, i) => i !== idx))}
-                    className="text-red-400 hover:text-red-300 p-0.5"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-                <div className="flex items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-1">
-                    <button type="button" onClick={() => alterarQtdItemCarrinho(idx, -1)} className="bg-slate-800 px-2.5 py-1 rounded font-bold">-</button>
-                    <span className="px-1.5 font-bold">{item.qtdVenda}x</span>
-                    <button type="button" onClick={() => alterarQtdItemCarrinho(idx, 1)} className="bg-slate-800 px-2.5 py-1 rounded font-bold">+</button>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-slate-400 text-[11px]">Un R$:</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={item.precoEditado}
-                      onChange={(e) => alterarPrecoItemCarrinho(idx, e.target.value)}
-                      className="w-20 bg-slate-900 border border-amber-500/40 rounded px-2 py-1 text-xs font-bold text-amber-400 text-right"
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="border-t border-slate-800 pt-3 space-y-3">
-        <div className="flex items-center justify-between gap-2 text-xs">
-          <span className="text-slate-400">Desconto na venda (R$):</span>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="0,00"
-            value={descontoPdv}
-            onChange={(e) => setDescontoPdv(e.target.value)}
-            className="w-24 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-right text-red-400 font-bold"
-          />
-        </div>
-
-        <div className="flex justify-between text-lg font-bold">
-          <span>Total Final:</span>
-          <span className="text-emerald-400">R$ {totalLiquidoPdv.toFixed(2)}</span>
-        </div>
-
-        <div className="space-y-2">
-          <select
-            value={formaPgto}
-            onChange={(e) => setFormaPgto(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-          >
-            <option>Pix</option>
-            <option>Dinheiro</option>
-            <option>Cartão de Débito</option>
-            <option>Cartão de Crédito</option>
-            <option>A Receber (Fiado)</option>
-          </select>
-
-          {formaPgto.includes('Cartão') && (
-            <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 space-y-1.5">
-              <label className="text-[11px] text-amber-400 font-semibold flex items-center gap-1">
-                <CreditCard size={12} /> Modalidade / Parcelas da Maquininha:
-              </label>
-              <select
-                value={taxaCartaoIdPdv}
-                onChange={(e) => setTaxaCartaoIdPdv(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs"
-              >
-                <option value="">Sem desconto de taxa (0%)</option>
-                {taxasCartaoDisponiveis.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.nome} — Taxa: {t.valor}% (-R$ {((totalLiquidoPdv * Number(t.valor)) / 100).toFixed(2)})
-                  </option>
-                ))}
-              </select>
-              {valorTaxaMaquininhaPdv > 0 && (
-                <p className="text-[11px] text-slate-400">
-                  Você recebe líquido: <strong className="text-emerald-400">R$ {(totalLiquidoPdv - valorTaxaMaquininhaPdv).toFixed(2)}</strong>
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={finalizarVendaPdv}
-          disabled={carrinho.length === 0 || loading}
-          className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold py-3.5 rounded-xl text-sm transition shadow"
-        >
-          Confirmar Venda & Gerar Comprovante
-        </button>
-      </div>
-    </div>
-  );
-
   return (
     <div className={`min-h-screen bg-slate-950 text-slate-100 flex flex-col pb-32 md:pb-8 ${temaUnidade.bordaTopo}`}>
       {toast && (
@@ -2076,7 +1925,7 @@ const adicionarTransacaoManual = async (e) => {
               <div className="flex items-center gap-2">
                 <h1 className={`font-bold text-base sm:text-lg leading-tight ${temaUnidade.textoDestaque}`}>Luisinho Chaveiro</h1>
                 <span className={`text-[10px] border px-1.5 py-0.5 rounded font-mono ${temaUnidade.badge}`}>
-                  v3.5
+                  v4.0
                 </span>
               </div>
               {erroConexao ? (
@@ -2266,8 +2115,8 @@ const adicionarTransacaoManual = async (e) => {
               key={aba.id}
               onClick={() => setAbaAtiva(aba.id)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition ${
-                abaAtiva === aba.id 
-                  ? `${temaUnidade.botaoAtivo} shadow` 
+                abaAtiva === aba.id
+                  ? `${temaUnidade.botaoAtivo} shadow`
                   : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
             >
@@ -2434,2160 +2283,284 @@ const adicionarTransacaoManual = async (e) => {
         )}
 
         {abaAtiva === 'pdv' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            <div className="lg:col-span-2 space-y-4">
-              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-                <h2 className={`font-bold mb-3 flex items-center gap-2 text-sm sm:text-base ${temaUnidade.textoDestaque}`}>
-                  <Search size={18} /> Selecionar Chave / Produto ({infoUnidadeAtual.nome})
-                </h2>
-
-                <div className="relative mb-3">
-                  <input
-                    ref={inputBuscaPdvRef}
-                    type="text"
-                    placeholder="Buscar chave por código ou nome..."
-                    value={buscaPdv}
-                    onChange={(e) => setBuscaPdv(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-3 pr-9 py-2.5 text-sm"
-                  />
-                  {buscaPdv && (
-                    <button
-                      type="button"
-                      onClick={() => setBuscaPdv('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
-                    >
-                      <X size={16} />
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-72 overflow-y-auto">
-                  {estoqueUnidade
-                    .filter((i) => i.nome.toLowerCase().includes(buscaPdv.toLowerCase()) || i.id.toLowerCase().includes(buscaPdv.toLowerCase()))
-                    .map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() => adicionarAoCarrinho(item)}
-                        className="p-3 bg-slate-950 hover:bg-slate-800 active:scale-[0.98] border border-slate-800 rounded-lg text-left transition flex flex-col justify-between"
-                      >
-                        <div>
-                          <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">{item.id}</span>
-                          <p className="font-semibold text-xs sm:text-sm mt-1 text-slate-100 leading-snug">{item.nome}</p>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between">
-                          <span className="text-amber-400 font-bold text-xs sm:text-sm">R$ {Number(item.venda).toFixed(2)}</span>
-                          <span className={`text-[11px] ${item.qtd <= item.minimo ? 'text-red-400 font-bold' : 'text-slate-400'}`}>
-                            Est: {item.qtd}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                </div>
-              </div>
-
-              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="font-bold text-sm text-slate-200">
-                    Serviços Rápidos da Tabela ou Mão de Obra Avulsa
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGerenciandoServicosPdv(!gerenciandoServicosPdv);
-                      setServicoRapidoForm({ id: null, nome: '', valor: '' });
-                    }}
-                    className={`text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 border transition ${
-                      gerenciandoServicosPdv
-                        ? 'bg-emerald-500 text-slate-950 border-emerald-500'
-                        : 'bg-slate-950 text-amber-400 border-slate-700 hover:bg-slate-800'
-                    }`}
-                  >
-                    {gerenciandoServicosPdv ? (
-                      <><Check size={13} /> Concluir Edição</>
-                    ) : (
-                      <><Edit2 size={13} /> Editar Lista</>
-                    )}
-                  </button>
-                </div>
-
-                {gerenciandoServicosPdv ? (
-                  <div className="space-y-3 bg-slate-950 p-3 rounded-xl border border-amber-500/40">
-                    <form onSubmit={salvarServicoRapidoPdv} className="space-y-2">
-                      <span className="text-[11px] font-bold uppercase text-amber-400 block">
-                        {servicoRapidoForm.id ? 'Alterando serviço selecionado:' : 'Adicionar novo serviço rápido:'}
-                      </span>
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <input
-                          type="text"
-                          placeholder="Nome do serviço (Ex: Abertura Residencial)"
-                          required
-                          value={servicoRapidoForm.nome}
-                          onChange={(e) => setServicoRapidoForm({ ...servicoRapidoForm, nome: e.target.value })}
-                          className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs sm:text-sm"
-                        />
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="Preço R$"
-                            required
-                            value={servicoRapidoForm.valor}
-                            onChange={(e) => setServicoRapidoForm({ ...servicoRapidoForm, valor: e.target.value })}
-                            className="w-28 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs sm:text-sm"
-                          />
-                          <button
-                            type="submit"
-                            className={`${temaUnidade.botaoAtivo} font-bold px-3.5 py-2 rounded-lg text-xs whitespace-nowrap`}
-                          >
-                            {servicoRapidoForm.id ? 'Atualizar' : '+ Salvar'}
-                          </button>
-                          {servicoRapidoForm.id && (
-                            <button
-                              type="button"
-                              onClick={() => setServicoRapidoForm({ id: null, nome: '', valor: '' })}
-                              className="bg-slate-800 text-slate-300 px-2.5 py-2 rounded-lg text-xs"
-                            >
-                              <X size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </form>
-
-                    <div className="space-y-1.5 max-h-56 overflow-y-auto pt-1 border-t border-slate-800">
-                      {listaServicosBase.length === 0 ? (
-                        <p className="text-xs text-slate-500 py-2">Nenhum serviço rápido cadastrado ainda.</p>
-                      ) : (
-                        listaServicosBase.map((srv) => (
-                          <div key={srv.id} className="bg-slate-900 px-3 py-2 rounded-lg border border-slate-800 flex items-center justify-between gap-2 text-xs">
-                            <div className="min-w-0">
-                              <p className="font-semibold text-slate-200 truncate">{srv.nome}</p>
-                              <span className="text-emerald-400 font-bold">R$ {Number(srv.valor).toFixed(2)}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => setServicoRapidoForm({ id: srv.id, nome: srv.nome, valor: srv.valor })}
-                                className="bg-slate-950 text-amber-400 p-1.5 rounded-lg border border-slate-700"
-                              >
-                                <Edit2 size={13} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => excluirItemTabelaPrecos(srv.id)}
-                                className="bg-slate-950 text-red-400 p-1.5 rounded-lg border border-slate-700"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {listaServicosBase.length === 0 ? (
-                      <p className="text-xs text-slate-500">Toque em "Editar Lista" para cadastrar seus serviços rápidos.</p>
-                    ) : (
-                      listaServicosBase.map((srv) => (
-                        <button
-                          key={srv.id}
-                          type="button"
-                          onClick={() => adicionarServicoAvulsoPdv(srv.nome, srv.valor)}
-                          className="bg-slate-950 hover:bg-slate-800 active:scale-[0.98] border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-amber-300 font-medium transition"
-                        >
-                          + {srv.nome} (R$ {Number(srv.valor).toFixed(2)})
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-800/80">
-                  <input
-                    type="text"
-                    placeholder="Descrição do serviço avulso (só para esta venda)..."
-                    value={servicoAvulsoDesc}
-                    onChange={(e) => setServicoAvulsoDesc(e.target.value)}
-                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="Valor (R$)"
-                      value={servicoAvulsoValor}
-                      onChange={(e) => setServicoAvulsoValor(e.target.value)}
-                      className="w-32 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                    />
-                    <button
-                      onClick={() => adicionarServicoAvulsoPdv()}
-                      className={`flex-1 sm:flex-none ${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-lg text-sm`}
-                    >
-                      + Incluir
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="hidden lg:block">
-              {renderComandaPDV()}
-            </div>
-
-            {carrinho.length > 0 && !comandaMobileAberta && (
-              <div className="lg:hidden fixed bottom-[60px] left-3 right-3 z-40">
-                <button
-                  onClick={() => setComandaMobileAberta(true)}
-                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-3.5 rounded-xl shadow-2xl flex items-center justify-between"
-                >
-                  <span className="flex items-center gap-2 text-sm">
-                    <ShoppingCart size={18} /> {totalItensCarrinho} {totalItensCarrinho === 1 ? 'item' : 'itens'} • R$ {totalLiquidoPdv.toFixed(2)}
-                  </span>
-                  <span className="flex items-center gap-1 text-xs bg-slate-950/20 px-2.5 py-1 rounded-lg">
-                    Ver Comanda <ChevronUp size={15} />
-                  </span>
-                </button>
-              </div>
-            )}
-
-            {comandaMobileAberta && (
-              <div className="lg:hidden fixed inset-0 bg-black/80 z-50 flex items-end justify-center p-2">
-                <div className="w-full max-h-[90vh] overflow-y-auto rounded-2xl">
-                  {renderComandaPDV()}
-                </div>
-              </div>
-            )}
-          </div>
+          <AbaPDV
+            temaUnidade={temaUnidade}
+            infoUnidadeAtual={infoUnidadeAtual}
+            loading={loading}
+            clientes={clientes}
+            mostrarToast={mostrarToast}
+            estoqueUnidade={estoqueUnidade}
+            buscaPdv={buscaPdv}
+            setBuscaPdv={setBuscaPdv}
+            inputBuscaPdvRef={inputBuscaPdvRef}
+            adicionarAoCarrinho={adicionarAoCarrinho}
+            listaServicosBase={listaServicosBase}
+            gerenciandoServicosPdv={gerenciandoServicosPdv}
+            setGerenciandoServicosPdv={setGerenciandoServicosPdv}
+            servicoRapidoForm={servicoRapidoForm}
+            setServicoRapidoForm={setServicoRapidoForm}
+            salvarServicoRapidoPdv={salvarServicoRapidoPdv}
+            excluirItemTabelaPrecos={excluirItemTabelaPrecos}
+            adicionarServicoAvulsoPdv={adicionarServicoAvulsoPdv}
+            servicoAvulsoDesc={servicoAvulsoDesc}
+            setServicoAvulsoDesc={setServicoAvulsoDesc}
+            servicoAvulsoValor={servicoAvulsoValor}
+            setServicoAvulsoValor={setServicoAvulsoValor}
+            carrinho={carrinho}
+            setCarrinho={setCarrinho}
+            alterarQtdItemCarrinho={alterarQtdItemCarrinho}
+            alterarPrecoItemCarrinho={alterarPrecoItemCarrinho}
+            totalItensCarrinho={totalItensCarrinho}
+            descontoPdv={descontoPdv}
+            setDescontoPdv={setDescontoPdv}
+            totalLiquidoPdv={totalLiquidoPdv}
+            formaPgto={formaPgto}
+            setFormaPgto={setFormaPgto}
+            taxaCartaoIdPdv={taxaCartaoIdPdv}
+            setTaxaCartaoIdPdv={setTaxaCartaoIdPdv}
+            taxasCartaoDisponiveis={taxasCartaoDisponiveis}
+            valorTaxaMaquininhaPdv={valorTaxaMaquininhaPdv}
+            clientePdv={clientePdv}
+            setClientePdv={setClientePdv}
+            finalizarVendaPdv={finalizarVendaPdv}
+            comandaMobileAberta={comandaMobileAberta}
+            setComandaMobileAberta={setComandaMobileAberta}
+          />
         )}
 
         {abaAtiva === 'simulador' && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-              <div className="lg:col-span-2 bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-                <h2 className={`font-bold flex items-center gap-2 ${temaUnidade.textoDestaque}`}>
-                  <Calculator size={18} /> Calculadora Rápida de Serviço
-                </h2>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">1. Serviço Base (Mão de Obra)</label>
-                    <select
-                      value={calcServicoId}
-                      onChange={(e) => setCalcServicoId(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                    >
-                      <option value="">Selecione o serviço...</option>
-                      {listaServicosBase.map((s) => (
-                        <option key={s.id} value={s.id}>{s.nome} — R$ {Number(s.valor).toFixed(2)}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">2. Peça / Marca da Tabela (Opcional)</label>
-                    <select
-                      value={calcPecaId}
-                      onChange={(e) => setCalcPecaId(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                    >
-                      <option value="">Apenas mão de obra (Sem peça)</option>
-                      {listaPecasTabela.map((p) => (
-                        <option key={p.id} value={p.id}>{p.nome} [{p.marca}] — +R$ {Number(p.valor).toFixed(2)}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Ou Puxar Peça/Chave do Estoque Atual</label>
-                    <select
-                      value={calcEstoqueId}
-                      onChange={(e) => setCalcEstoqueId(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                    >
-                      <option value="">Nenhum item do estoque</option>
-                      {estoqueUnidade.map((e) => (
-                        <option key={e.id} value={e.id}>[{e.id}] {e.nome} — +R$ {Number(e.venda).toFixed(2)}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-slate-400 block mb-1">Ajuste Extra Manual (R$)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      placeholder="Ex: +20 ou -10"
-                      value={calcValorExtraManual}
-                      onChange={(e) => setCalcValorExtraManual(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-400 block mb-2">3. Variáveis do Caso (Área de Cobertura / Horário / Dificuldade)</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {listaAdicionais.map((ad) => {
-                      const marcado = calcAdicionaisIds.includes(ad.id);
-                      return (
-                        <button
-                          key={ad.id}
-                          type="button"
-                          onClick={() => {
-                            if (marcado) setCalcAdicionaisIds(calcAdicionaisIds.filter((i) => i !== ad.id));
-                            else setCalcAdicionaisIds([...calcAdicionaisIds, ad.id]);
-                          }}
-                          className={`p-2.5 rounded-lg border text-left text-xs flex items-center justify-between transition ${
-                            marcado ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold' : 'bg-slate-950 border-slate-800 text-slate-300'
-                          }`}
-                        >
-                          <span>{ad.nome}</span>
-                          <span className="text-amber-400 ml-2 whitespace-nowrap">
-                            +{ad.tipo_valor === 'percentual' ? `${ad.valor}%` : `R$ ${Number(ad.valor).toFixed(2)}`}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                      <CreditCard size={14} className="text-amber-400" /> 4. Simular Parcelamento / Taxa da Maquininha
-                    </span>
-                    <label className="flex items-center gap-2 text-xs text-amber-400 font-semibold cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={calcRepassarTaxa}
-                        onChange={(e) => setCalcRepassarTaxa(e.target.checked)}
-                        className="rounded"
-                      />
-                      Repassar taxa ao cliente
-                    </label>
-                  </div>
-                  <select
-                    value={calcTaxaId}
-                    onChange={(e) => setCalcTaxaId(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                  >
-                    <option value="">Pagamento à vista no Pix / Dinheiro (Sem taxa)</option>
-                    {taxasCartaoDisponiveis.map((t) => (
-                      <option key={t.id} value={t.id}>{t.nome} (Taxa cadastrada: {t.valor}%)</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4">
-                <div className="space-y-3">
-                  <h3 className={`font-bold ${temaUnidade.textoDestaque}`}>Resumo da Cotação</h3>
-                  <p className="text-xs text-slate-300 bg-slate-950 p-3 rounded-lg border border-slate-800">
-                    {montarResumoSimulador()}
-                  </p>
-
-                  <div className="space-y-1 text-xs bg-slate-950 p-3 rounded-lg border border-slate-800">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Valor Base + Peça:</span>
-                      <span>R$ {valorBaseCalc.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Acréscimos:</span>
-                      <span>+ R$ {valorAdicionaisCalc.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between font-bold text-slate-200 pt-1 border-t border-slate-800">
-                      <span>À vista (Pix / Dinheiro):</span>
-                      <span className="text-emerald-400">R$ {subtotalSimulador.toFixed(2)}</span>
-                    </div>
-                    {taxaSimuladorObj && (
-                      <div className="flex justify-between font-bold text-amber-400 pt-1">
-                        <span>No Cartão ({taxaSimuladorObj.nome}):</span>
-                        <span>R$ {totalFinalSimulador.toFixed(2)}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2 pt-2">
-                    <ClienteAutocomplete
-                      clientes={clientes}
-                      placeholder="Puxar cliente salvo para cotação..."
-                      onSelecionar={(c) => {
-                        setCalcCliente({
-                          nome: c.nome,
-                          tel: c.tel || '',
-                          endereco: c.endereco || ''
-                        });
-                        mostrarToast(`Cliente ${c.nome} carregado!`);
-                      }}
-                    />
-                    <input
-                      type="text"
-                      placeholder="Nome do Cliente"
-                      value={calcCliente.nome}
-                      onChange={(e) => setCalcCliente({ ...calcCliente, nome: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                    />
-                    <input
-                      type="tel"
-                      placeholder="WhatsApp com DDD"
-                      value={calcCliente.tel}
-                      onChange={(e) => setCalcCliente({ ...calcCliente, tel: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Endereço / Local do Serviço"
-                      value={calcCliente.endereco}
-                      onChange={(e) => setCalcCliente({ ...calcCliente, endereco: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={() => salvarSimuladorEmStandby(true)}
-                    className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
-                  >
-                    <Share2 size={15} /> Salvar Standby & Enviar WhatsApp
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => salvarSimuladorEmStandby(false)}
-                    className="w-full bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
-                  >
-                    <FolderClock size={15} /> Só Salvar em Standby
-                  </button>
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={enviarSimuladorParaPDV}
-                      className={`${temaUnidade.botaoAtivo} font-bold py-2 rounded-lg text-xs`}
-                    >
-                      Jogar pro PDV
-                    </button>
-                    <button
-                      type="button"
-                      onClick={enviarSimuladorParaOS}
-                      className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold py-2 rounded-lg text-xs border border-slate-700"
-                    >
-                      Virar OS Direto
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className={`font-bold text-sm ${temaUnidade.textoDestaque}`}>
-                  Tabela de Preços, Marcas e Taxas da Maquininha ({tabelaPrecos.length})
-                </h3>
-                <button
-                  onClick={() => toggleForm('tabela')}
-                  className={`${temaUnidade.botaoAtivo} text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1`}
-                >
-                  {formAberto.tabela ? <><X size={14} /> Fechar</> : <><Plus size={14} /> Editar / Adicionar Preços</>}
-                </button>
-              </div>
-
-              {formAberto.tabela && (
-                <>
-                  <form onSubmit={salvarItemTabelaPrecos} className="grid grid-cols-1 sm:grid-cols-6 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
-                    <select
-                      value={novoItemTabela.grupo}
-                      onChange={(e) => setNovoItemTabela({ ...novoItemTabela, grupo: e.target.value, tipo_valor: e.target.value === 'taxa_cartao' ? 'percentual' : 'fixo' })}
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-xs"
-                    >
-                      <option value="servico">Serviço Base</option>
-                      <option value="peca">Peça / Fechadura / Miolo</option>
-                      <option value="adicional">Acréscimo (Área/Urgência)</option>
-                      <option value="taxa_cartao">Taxa Maquininha (%)</option>
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="Nome (Ex: Abertura / Cilindro) *"
-                      required
-                      value={novoItemTabela.nome}
-                      onChange={(e) => setNovoItemTabela({ ...novoItemTabela, nome: e.target.value })}
-                      className="sm:col-span-2 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-xs"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Marca / Detalhe"
-                      value={novoItemTabela.marca}
-                      onChange={(e) => setNovoItemTabela({ ...novoItemTabela, marca: e.target.value })}
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-xs"
-                    />
-                    <div className="flex gap-1">
-                      <select
-                        value={novoItemTabela.tipo_valor}
-                        onChange={(e) => setNovoItemTabela({ ...novoItemTabela, tipo_valor: e.target.value })}
-                        className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-2.5 text-xs"
-                      >
-                        <option value="fixo">R$</option>
-                        <option value="percentual">%</option>
-                      </select>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="Valor *"
-                        required
-                        value={novoItemTabela.valor}
-                        onChange={(e) => setNovoItemTabela({ ...novoItemTabela, valor: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-2.5 text-xs"
-                      />
-                    </div>
-                    <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold py-2.5 px-3 rounded-lg text-xs`}>
-                      {novoItemTabela.id ? 'Atualizar' : '+ Salvar'}
-                    </button>
-                  </form>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
-                    {tabelaPrecos.map((item) => (
-                      <div key={item.id} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between gap-2 text-xs">
-                        <div>
-                          <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-slate-800 text-amber-400 mr-1.5">
-                            {item.grupo}
-                          </span>
-                          <strong className="text-slate-200">{item.nome}</strong>
-                          {item.marca && <span className="text-slate-400"> ({item.marca})</span>}
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="font-bold text-emerald-400">
-                            {item.tipo_valor === 'percentual' ? `${item.valor}%` : `R$ ${Number(item.valor).toFixed(2)}`}
-                          </span>
-                          <button onClick={() => setNovoItemTabela(item)} className="text-amber-400 p-1">
-                            <Edit2 size={14} />
-                          </button>
-                          <button onClick={() => excluirItemTabelaPrecos(item.id)} className="text-red-400 p-1">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+          <AbaSimulador
+            temaUnidade={temaUnidade}
+            clientes={clientes}
+            mostrarToast={mostrarToast}
+            listaServicosBase={listaServicosBase}
+            calcServicoId={calcServicoId}
+            setCalcServicoId={setCalcServicoId}
+            listaPecasTabela={listaPecasTabela}
+            calcPecaId={calcPecaId}
+            setCalcPecaId={setCalcPecaId}
+            estoqueUnidade={estoqueUnidade}
+            calcEstoqueId={calcEstoqueId}
+            setCalcEstoqueId={setCalcEstoqueId}
+            calcValorExtraManual={calcValorExtraManual}
+            setCalcValorExtraManual={setCalcValorExtraManual}
+            listaAdicionais={listaAdicionais}
+            calcAdicionaisIds={calcAdicionaisIds}
+            setCalcAdicionaisIds={setCalcAdicionaisIds}
+            calcRepassarTaxa={calcRepassarTaxa}
+            setCalcRepassarTaxa={setCalcRepassarTaxa}
+            calcTaxaId={calcTaxaId}
+            setCalcTaxaId={setCalcTaxaId}
+            taxasCartaoDisponiveis={taxasCartaoDisponiveis}
+            montarResumoSimulador={montarResumoSimulador}
+            valorBaseCalc={valorBaseCalc}
+            valorAdicionaisCalc={valorAdicionaisCalc}
+            subtotalSimulador={subtotalSimulador}
+            taxaSimuladorObj={taxaSimuladorObj}
+            totalFinalSimulador={totalFinalSimulador}
+            calcCliente={calcCliente}
+            setCalcCliente={setCalcCliente}
+            salvarSimuladorEmStandby={salvarSimuladorEmStandby}
+            enviarSimuladorParaPDV={enviarSimuladorParaPDV}
+            enviarSimuladorParaOS={enviarSimuladorParaOS}
+            tabelaPrecos={tabelaPrecos}
+            formAberto={formAberto}
+            toggleForm={toggleForm}
+            novoItemTabela={novoItemTabela}
+            setNovoItemTabela={setNovoItemTabela}
+            salvarItemTabelaPrecos={salvarItemTabelaPrecos}
+            excluirItemTabelaPrecos={excluirItemTabelaPrecos}
+          />
         )}
 
         {abaAtiva === 'os' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
-                Ordens de Serviço — {infoUnidadeAtual.nome} ({osExibidas.length})
-              </h2>
-              <button
-                onClick={() => toggleForm('os')}
-                className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow`}
-              >
-                {formAberto.os ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Nova Ordem de Serviço</>}
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { id: 'pendente', label: `Pendentes (${osPendentes.length})` },
-                { id: 'concluida', label: `Concluídas (${osConcluidas.length})` },
-                { id: 'todas', label: `Todas (${osUnidade.length})` }
-              ].map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setFiltroStatusOS(f.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
-                    filtroStatusOS === f.id ? temaUnidade.botaoAtivo : 'bg-slate-900 text-slate-400 border border-slate-800'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-
-            {formAberto.os && (
-              <form onSubmit={(e) => criarOS(e, false)} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 shadow-lg">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-bold uppercase text-slate-400">Preencher Nova OS</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <ClienteAutocomplete
-                      clientes={clientes}
-                      onSelecionar={(cli) => {
-                        setNovaOS({
-                          ...novaOS,
-                          cliente: cli.nome,
-                          tel: cli.tel || '',
-                          endereco: cli.endereco || novaOS.endereco
-                        });
-                        mostrarToast(`Cliente ${cli.nome} preenchido na OS!`);
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setModalConfigUnidades(true)}
-                      className="bg-slate-950 border border-sky-700 text-sky-400 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1"
-                    >
-                      <UserPlus size={13} /> Equipe ({funcionarios.length})
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    placeholder="Nome do Cliente *"
-                    required
-                    value={novaOS.cliente}
-                    onChange={(e) => setNovaOS({ ...novaOS, cliente: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <input
-                    type="tel"
-                    placeholder="WhatsApp do Cliente (DDD)"
-                    value={novaOS.tel}
-                    onChange={(e) => setNovaOS({ ...novaOS, tel: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Endereço / Local do Serviço"
-                    value={novaOS.endereco}
-                    onChange={(e) => setNovaOS({ ...novaOS, endereco: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    placeholder="O que será feito (Descrição) *"
-                    required
-                    value={novaOS.desc}
-                    onChange={(e) => setNovaOS({ ...novaOS, desc: e.target.value })}
-                    className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="Valor Total (R$) *"
-                    required
-                    value={novaOS.valor}
-                    onChange={(e) => setNovaOS({ ...novaOS, valor: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                </div>
-
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
-                  <span className="text-xs font-bold text-amber-400 block">
-                    Materiais do estoque (Permite vários itens):
-                  </span>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <select
-                      value={itemTempOS.chave_id}
-                      onChange={(e) => setItemTempOS({ ...itemTempOS, chave_id: e.target.value })}
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                    >
-                      <option value="">Selecionar item do estoque...</option>
-                      {estoqueUnidade.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          [{item.id}] {item.nome} (Est: {item.qtd})
-                        </option>
-                      ))}
-                    </select>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        value={itemTempOS.qtd}
-                        onChange={(e) => setItemTempOS({ ...itemTempOS, qtd: e.target.value })}
-                        className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={adicionarMaterialNaOS}
-                        className="bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold px-3 py-2 rounded-lg text-xs border border-slate-700"
-                      >
-                        + Incluir
-                      </button>
-                    </div>
-                  </div>
-
-                  {novaOS.itens_usados.length > 0 && (
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {novaOS.itens_usados.map((m, idx) => (
-                        <span key={idx} className="bg-slate-900 border border-amber-500/40 text-amber-300 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-                          {m.qtd}x {m.nome}
-                          <button type="button" onClick={() => removerMaterialDaOS(idx)} className="text-red-400">
-                            <X size={13} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <select
-                    value={novaOS.funcionario_id}
-                    onChange={(e) => setNovaOS({ ...novaOS, funcionario_id: e.target.value })}
-                    className="bg-slate-950 border border-sky-800 rounded-lg px-3 py-2 text-xs text-sky-300 font-bold"
-                  >
-                    <option value="">
-                      {funcionarioPadraoUnidade
-                        ? `Funcionário: ${funcionarioPadraoUnidade.nome} (Padrão)`
-                        : 'Sem funcionário selecionado'}
-                    </option>
-                    {funcionarios.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        Funcionário: {f.nome} ({f.unidade.toUpperCase()})
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={novaOS.forma_pgto}
-                    onChange={(e) => setNovaOS({ ...novaOS, forma_pgto: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-amber-300 font-semibold"
-                  >
-                    <option value="Receber na Entrega (Pix/Cartão)">Pagamento: Receber na Entrega</option>
-                    <option value="Já Pago Adiantado">Pagamento: Já Pago Adiantado</option>
-                    <option value="Sinal 50% Pago / Cobrar Restante">Pagamento: Sinal 50% Pago</option>
-                    <option value="Faturado / Condomínio">Pagamento: Faturado / Condomínio</option>
-                  </select>
-
-                  <select
-                    value={novaOS.garantia}
-                    onChange={(e) => setNovaOS({ ...novaOS, garantia: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300"
-                  >
-                    <option value="90 dias">Garantia: 90 dias</option>
-                    <option value="6 meses">Garantia: 6 meses</option>
-                    <option value="1 ano">Garantia: 1 ano</option>
-                    <option value="Sem garantia">Sem garantia</option>
-                  </select>
-
-                  <input
-                    type="text"
-                    placeholder="Placa / Fechadura / Obs"
-                    value={novaOS.obs_tecnica}
-                    onChange={(e) => setNovaOS({ ...novaOS, obs_tecnica: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                  />
-                </div>
-
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold px-5 py-2.5 rounded-lg text-xs sm:text-sm`}>
-                    Salvar OS
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => criarOS(null, true)}
-                    className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5"
-                  >
-                    <Send size={15} /> Salvar & Enviar pro Funcionário
-                  </button>
-                </div>
-              </form>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {osExibidas.map((os) => {
-                const listaMat = Array.isArray(os.itens_usados) && os.itens_usados.length > 0
-                  ? os.itens_usados
-                  : (os.chave_id ? [{ id: os.chave_id, nome: os.chave_id, qtd: os.qtd_copias }] : []);
-
-                const nomeFuncExibido = os.funcionario_nome || funcionarioPadraoUnidade?.nome || '';
-
-                return (
-                  <div key={os.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-3">
-                    <div>
-                      <div className="flex justify-between items-start">
-                        <span className="text-xs font-mono text-slate-400">OS Nº {os.id.toString().slice(-4)} • {os.data}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded font-bold uppercase ${os.status === 'concluida' ? 'bg-emerald-950 text-emerald-400' : 'bg-amber-950 text-amber-400'}`}>
-                          {os.status}
-                        </span>
-                      </div>
-                      <h3 className="font-bold text-base mt-1">{os.cliente}</h3>
-                      {os.tel && <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><Phone size={11} /> {os.tel}</p>}
-                      {os.endereco && <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><MapPin size={11} /> {os.endereco}</p>}
-                      <p className="text-sm text-slate-200 mt-1.5">{os.desc}</p>
-                      <div className="flex flex-wrap gap-2 mt-1.5">
-                        {os.forma_pgto && <span className="text-[11px] text-amber-300 font-medium">Pgto: {os.forma_pgto}</span>}
-                        {nomeFuncExibido && <span className="text-[11px] text-sky-400 font-bold">Resp: {nomeFuncExibido}</span>}
-                      </div>
-                      {listaMat.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {listaMat.map((m, i) => (
-                            <span key={i} className="text-[11px] bg-slate-800 text-amber-300 px-2 py-0.5 rounded">
-                              {m.qtd}x {m.nome || m.id}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-2 border-t border-slate-800 pt-3">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-base text-amber-400">R$ {Number(os.valor).toFixed(2)}</span>
-                        <button
-                          onClick={() => enviarDiretoParaFuncionario('os', os)}
-                          className="bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow"
-                        >
-                          <Send size={13} /> Enviar p/ {nomeFuncExibido || 'Funcionário'}
-                        </button>
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-1.5">
-                        {os.status !== 'concluida' ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            <button
-                              onClick={() => concluirOS(os, 'Pix')}
-                              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1"
-                            >
-                              <CheckCircle size={13} /> Concluir (Pago)
-                            </button>
-                            <button
-                              onClick={() => concluirOS(os, 'A Receber (Fiado)')}
-                              className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-3 py-2 rounded-lg"
-                            >
-                              Fiado
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex flex-wrap gap-1.5">
-                            <button
-                              onClick={() => setComprovanteAtivo({
-                                origem: `OS Nº ${os.id.toString().slice(-4)}`,
-                                cliente: os.cliente,
-                                tel: os.tel || '',
-                                itensTexto: `- ${os.desc}`,
-                                total: os.valor,
-                                forma: 'Pix',
-                                garantia: '90 dias',
-                                unidade: os.unidade || unidadeOperacional
-                              })}
-                              className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1"
-                            >
-                              <Share2 size={13} /> Comprovante
-                            </button>
-                            <button
-                              onClick={() => abrirPortalNFSe({ cliente: os.cliente, desc: os.desc, valor: os.valor })}
-                              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1"
-                              title="Copia os dados e abre o portal oficial da NFS-e"
-                            >
-                              <Receipt size={13} /> NFS-e
-                            </button>
-                          </div>
-                        )}
-                        <button onClick={() => excluirOS(os.id)} className="text-red-400 hover:text-red-300 p-2">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <AbaOS
+            temaUnidade={temaUnidade}
+            infoUnidadeAtual={infoUnidadeAtual}
+            unidadeOperacional={unidadeOperacional}
+            clientes={clientes}
+            mostrarToast={mostrarToast}
+            funcionarios={funcionarios}
+            funcionarioPadraoUnidade={funcionarioPadraoUnidade}
+            setModalConfigUnidades={setModalConfigUnidades}
+            estoqueUnidade={estoqueUnidade}
+            osPendentes={osPendentes}
+            osConcluidas={osConcluidas}
+            osUnidade={osUnidade}
+            osExibidas={osExibidas}
+            filtroStatusOS={filtroStatusOS}
+            setFiltroStatusOS={setFiltroStatusOS}
+            formAberto={formAberto}
+            toggleForm={toggleForm}
+            novaOS={novaOS}
+            setNovaOS={setNovaOS}
+            itemTempOS={itemTempOS}
+            setItemTempOS={setItemTempOS}
+            adicionarMaterialNaOS={adicionarMaterialNaOS}
+            removerMaterialDaOS={removerMaterialDaOS}
+            criarOS={criarOS}
+            enviarDiretoParaFuncionario={enviarDiretoParaFuncionario}
+            concluirOS={concluirOS}
+            setComprovanteAtivo={setComprovanteAtivo}
+            abrirPortalNFSe={abrirPortalNFSe}
+            excluirOS={excluirOS}
+          />
         )}
 
         {abaAtiva === 'agenda' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
-                Socorros Externos — {infoUnidadeAtual.nome} ({socorrosExibidos.length})
-              </h2>
-              <button
-                onClick={() => toggleForm('agenda')}
-                className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow`}
-              >
-                {formAberto.agenda ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Agendar Socorro</>}
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { id: 'pendente', label: `Pendentes (${socorrosPendentes.length})` },
-                { id: 'concluido', label: `Concluídos (${socorrosConcluidos.length})` },
-                { id: 'todos', label: `Todos (${agendaUnidade.length})` }
-              ].map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setFiltroStatusAgenda(f.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
-                    filtroStatusAgenda === f.id ? temaUnidade.botaoAtivo : 'bg-slate-900 text-slate-400 border border-slate-800'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-
-            {formAberto.agenda && (
-              <form onSubmit={(e) => criarAgendamento(e, false)} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 shadow-lg">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-bold uppercase text-slate-400">Novo Atendimento Externo</span>
-                  <ClienteAutocomplete
-                    clientes={clientes}
-                    onSelecionar={(cli) => {
-                      setNovoAgendamento({
-                        ...novoAgendamento,
-                        cliente: cli.nome,
-                        tel: cli.tel || '',
-                        endereco: cli.endereco || novoAgendamento.endereco
-                      });
-                      mostrarToast(`Cliente ${cli.nome} preenchido no Socorro!`);
-                    }}
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input
-                    type="text"
-                    placeholder="Nome do Cliente *"
-                    required
-                    value={novoAgendamento.cliente}
-                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, cliente: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <input
-                    type="tel"
-                    placeholder="WhatsApp (com DDD)"
-                    value={novoAgendamento.tel}
-                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, tel: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Endereço / Referência *"
-                    required
-                    value={novoAgendamento.endereco}
-                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, endereco: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Serviço (Ex: Abertura + Miolo) *"
-                    required
-                    value={novoAgendamento.servico}
-                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, servico: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <div className="flex gap-2">
-                    <input
-                      type="date"
-                      value={novoAgendamento.data}
-                      onChange={(e) => setNovoAgendamento({ ...novoAgendamento, data: e.target.value })}
-                      className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2.5 text-sm"
-                    />
-                    <input
-                      type="time"
-                      value={novoAgendamento.hora}
-                      onChange={(e) => setNovoAgendamento({ ...novoAgendamento, hora: e.target.value })}
-                      className="w-28 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2.5 text-sm"
-                    />
-                  </div>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="Valor Total Combinado (R$)"
-                    value={novoAgendamento.valor_estimado}
-                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, valor_estimado: e.target.value, taxa_deslocamento: 0 })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                </div>
-
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
-                  <span className="text-xs font-bold text-amber-400 block">Materiais levados no Socorro (Opcional):</span>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <select
-                      value={itemTempAg.chave_id}
-                      onChange={(e) => setItemTempAg({ ...itemTempAg, chave_id: e.target.value })}
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                    >
-                      <option value="">Selecionar peça/chave do estoque...</option>
-                      {estoqueUnidade.map((item) => (
-                        <option key={item.id} value={item.id}>[{item.id}] {item.nome} (Disp: {item.qtd})</option>
-                      ))}
-                    </select>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        value={itemTempAg.qtd}
-                        onChange={(e) => setItemTempAg({ ...itemTempAg, qtd: e.target.value })}
-                        className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={adicionarMaterialNoSocorro}
-                        className="bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold px-3 py-2 rounded-lg text-xs border border-slate-700"
-                      >
-                        + Incluir
-                      </button>
-                    </div>
-                  </div>
-                  {novoAgendamento.itens_usados.length > 0 && (
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {novoAgendamento.itens_usados.map((m, idx) => (
-                        <span key={idx} className="bg-slate-900 border border-amber-500/40 text-amber-300 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1.5">
-                          {m.qtd}x {m.nome}
-                          <button type="button" onClick={() => removerMaterialDoSocorro(idx)} className="text-red-400">
-                            <X size={13} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <select
-                    value={novoAgendamento.funcionario_id}
-                    onChange={(e) => setNovoAgendamento({ ...novoAgendamento, funcionario_id: e.target.value })}
-                    className="bg-slate-950 border border-sky-800 rounded-lg px-3 py-2.5 text-xs text-sky-300 font-bold"
-                  >
-                    <option value="">
-                      {funcionarioPadraoUnidade
-                        ? `Funcionário: ${funcionarioPadraoUnidade.nome} (Padrão)`
-                        : 'Sem funcionário selecionado'}
-                    </option>
-                    {funcionarios.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        Funcionário: {f.nome} ({f.unidade.toUpperCase()})
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold px-5 py-2.5 rounded-lg text-xs sm:text-sm`}>
-                      Salvar Socorro
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => criarAgendamento(null, true)}
-                      className="bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs sm:text-sm flex items-center gap-1.5"
-                    >
-                      <Send size={15} /> Salvar & Enviar p/ Funcionário
-                    </button>
-                  </div>
-                </div>
-              </form>
-            )}
-
-            <div className="space-y-3">
-              {socorrosExibidos.map((ag) => {
-                const totalSoc = Number(ag.valor_estimado || 0) + Number(ag.taxa_deslocamento || 0);
-                const listaMat = Array.isArray(ag.itens_usados) ? ag.itens_usados : [];
-                const nomeFuncSoc = ag.funcionario_nome || funcionarioPadraoUnidade?.nome || '';
-
-                return (
-                  <div key={ag.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <span className="text-xs text-amber-400 font-bold">{ag.data} às {ag.hora}</span>
-                      <h3 className="font-bold text-base">{ag.cliente} — {ag.servico}</h3>
-                      <p className="text-xs text-slate-400 flex items-center gap-1">
-                        <MapPin size={13} /> {ag.endereco} {ag.tel ? `• WhatsApp: ${ag.tel}` : ''}
-                      </p>
-                      {nomeFuncSoc && <span className="text-[11px] text-sky-400 font-bold block">Resp: {nomeFuncSoc}</span>}
-                      {listaMat.length > 0 && (
-                        <div className="flex flex-wrap gap-1 pt-1">
-                          {listaMat.map((m, i) => (
-                            <span key={i} className="text-[11px] bg-slate-800 text-amber-300 px-2 py-0.5 rounded">
-                              {m.qtd}x {m.nome}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 border-slate-800 pt-3 sm:pt-0">
-                      <span className="font-bold text-base text-emerald-400">R$ {totalSoc.toFixed(2)}</span>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <button
-                          onClick={() => enviarDiretoParaFuncionario('socorro', ag)}
-                          className="bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1"
-                        >
-                          <Send size={12} /> Enviar p/ {nomeFuncSoc || 'Funcionário'}
-                        </button>
-                        {ag.status !== 'concluido' ? (
-                          <button
-                            onClick={() => concluirAgendamento(ag, 'Pix')}
-                            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1"
-                          >
-                            <CheckCircle size={14} /> Finalizar & Recibo
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => setComprovanteAtivo({
-                              origem: `Socorro (${ag.cliente})`,
-                              cliente: ag.cliente,
-                              tel: ag.tel || '',
-                              itensTexto: `- Socorro: ${ag.servico}\n- Local: ${ag.endereco}`,
-                              total: totalSoc,
-                              forma: 'Pix',
-                              garantia: '90 dias',
-                              unidade: ag.unidade || unidadeOperacional
-                            })}
-                            className="bg-slate-800 text-emerald-400 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1"
-                          >
-                            <Share2 size={13} /> Recibo Cliente
-                          </button>
-                        )}
-                        <button onClick={() => excluirAgendamento(ag.id)} className="text-red-400 p-2">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <AbaSocorros
+            temaUnidade={temaUnidade}
+            infoUnidadeAtual={infoUnidadeAtual}
+            unidadeOperacional={unidadeOperacional}
+            clientes={clientes}
+            mostrarToast={mostrarToast}
+            funcionarios={funcionarios}
+            funcionarioPadraoUnidade={funcionarioPadraoUnidade}
+            estoqueUnidade={estoqueUnidade}
+            socorrosPendentes={socorrosPendentes}
+            socorrosConcluidos={socorrosConcluidos}
+            agendaUnidade={agendaUnidade}
+            socorrosExibidos={socorrosExibidos}
+            filtroStatusAgenda={filtroStatusAgenda}
+            setFiltroStatusAgenda={setFiltroStatusAgenda}
+            formAberto={formAberto}
+            toggleForm={toggleForm}
+            novoAgendamento={novoAgendamento}
+            setNovoAgendamento={setNovoAgendamento}
+            itemTempAg={itemTempAg}
+            setItemTempAg={setItemTempAg}
+            adicionarMaterialNoSocorro={adicionarMaterialNoSocorro}
+            removerMaterialDoSocorro={removerMaterialDoSocorro}
+            criarAgendamento={criarAgendamento}
+            enviarDiretoParaFuncionario={enviarDiretoParaFuncionario}
+            concluirAgendamento={concluirAgendamento}
+            setComprovanteAtivo={setComprovanteAtivo}
+            excluirAgendamento={excluirAgendamento}
+          />
         )}
 
         {abaAtiva === 'orcamento' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
-                Orçamentos em Standby — {infoUnidadeAtual.nome}
-              </h2>
-              <button
-                onClick={() => toggleForm('orcamento')}
-                className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow`}
-              >
-                {formAberto.orcamento ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Novo Orçamento</>}
-              </button>
-            </div>
-
-            {formAberto.orcamento && (
-              <div className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-4 shadow-lg">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <span className="font-bold text-sm text-amber-400">
-                    {orcamento.id ? `Editando Orçamento: ${orcamento.cliente}` : 'Montar Novo Orçamento'}
-                  </span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {orcamento.id && (
-                      <button
-                        type="button"
-                        onClick={() => setOrcamento({
-                          id: null, cliente: '', tel: '', endereco: '', tipo_cliente: 'Residencial',
-                          forma_pgto: 'Pix / Dinheiro (À Vista)', itens: [{ desc: '', qtd: 1, valor: 0 }],
-                          obs: 'Validade: 7 dias. Garantia de 90 dias.'
-                        })}
-                        className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
-                      >
-                        <X size={14} /> Limpar
-                      </button>
-                    )}
-                    <ClienteAutocomplete
-                      clientes={clientes}
-                      onSelecionar={(cli) => {
-                        setOrcamento({
-                          ...orcamento,
-                          cliente: cli.nome,
-                          tel: cli.tel || '',
-                          endereco: cli.endereco || '',
-                          tipo_cliente: cli.tipo || 'Residencial'
-                        });
-                        mostrarToast(`Cliente ${cli.nome} preenchido no Orçamento!`);
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-3">
-                  <span className="text-xs font-bold text-amber-400 uppercase block">1. Dados do Cliente & Local</span>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <input
-                      type="text"
-                      placeholder="Nome do Cliente / Condomínio *"
-                      value={orcamento.cliente}
-                      onChange={(e) => setOrcamento({ ...orcamento, cliente: e.target.value })}
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                    />
-                    <input
-                      type="tel"
-                      placeholder="WhatsApp (com DDD)"
-                      value={orcamento.tel}
-                      onChange={(e) => setOrcamento({ ...orcamento, tel: e.target.value })}
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                    />
-                    <select
-                      value={orcamento.tipo_cliente}
-                      onChange={(e) => setOrcamento({ ...orcamento, tipo_cliente: e.target.value })}
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm text-slate-200"
-                    >
-                      <option value="Residencial">Cliente: Residencial</option>
-                      <option value="Comercial / Condomínio">Cliente: Comercial / Condomínio</option>
-                      <option value="Automotivo">Cliente: Automotivo</option>
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <input
-                      type="text"
-                      placeholder="Endereço Completo / Referência / Apto / Placa"
-                      value={orcamento.endereco}
-                      onChange={(e) => setOrcamento({ ...orcamento, endereco: e.target.value })}
-                      className="sm:col-span-2 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                    />
-                    <select
-                      value={orcamento.forma_pgto}
-                      onChange={(e) => setOrcamento({ ...orcamento, forma_pgto: e.target.value })}
-                      className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2.5 text-sm text-amber-300 font-semibold"
-                    >
-                      <option value="Pix / Dinheiro (À Vista)">Pgto: Pix / Dinheiro</option>
-                      <option value="Cartão de Crédito / Débito">Pgto: Cartão</option>
-                      <option value="Sinal 50% + Restante na Entrega">Pgto: Sinal 50% + Entrega</option>
-                      <option value="Faturado / Boleto Condomínio">Pgto: Faturado / Condomínio</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <span className="text-xs font-bold text-amber-400 uppercase block">2. Itens e Serviços</span>
-                  {orcamento.itens.map((item, index) => (
-                    <div key={index} className="flex flex-col sm:flex-row gap-2 bg-slate-950 p-2.5 rounded-lg border border-slate-800">
-                      <input
-                        type="text"
-                        placeholder="Serviço, Fechadura ou Chave"
-                        value={item.desc}
-                        onChange={(e) => atualizarItemOrcamento(index, 'desc', e.target.value)}
-                        className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                      />
-                      <div className="flex gap-2 items-center">
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.qtd}
-                          onChange={(e) => atualizarItemOrcamento(index, 'qtd', e.target.value)}
-                          className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                        />
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="Valor Un."
-                          value={item.valor}
-                          onChange={(e) => atualizarItemOrcamento(index, 'valor', e.target.value)}
-                          className="flex-1 sm:w-28 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                        />
-                        {orcamento.itens.length > 1 && (
-                          <button type="button" onClick={() => removerLinhaOrcamento(index)} className="text-red-400 px-2">
-                            <Trash2 size={15} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  <button type="button" onClick={adicionarLinhaOrcamento} className="text-xs text-amber-400 hover:underline font-semibold">
-                    + Adicionar mais um item
-                  </button>
-                </div>
-
-                <input
-                  type="text"
-                  placeholder="Observações / Garantia / Prazo"
-                  value={orcamento.obs}
-                  onChange={(e) => setOrcamento({ ...orcamento, obs: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200"
-                />
-
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3">
-                  <span className="text-lg font-bold">Total: R$ {totalOrcamento.toFixed(2)}</span>
-                  <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={() => salvarOrcamentoStandby(false)}
-                      className="flex-1 sm:flex-none bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
-                    >
-                      <FolderClock size={16} /> Salvar em Standby
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => salvarOrcamentoStandby(true)}
-                      className="flex-1 sm:flex-none bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5"
-                    >
-                      <Share2 size={16} /> Salvar & Enviar WhatsApp
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-bold text-slate-400 uppercase">Filtrar Fila</span>
-                <div className="flex gap-1.5">
-                  {[
-                    { id: 'standby', label: `Aguardando (${orcamentosEmStandby.length})` },
-                    { id: 'aprovado', label: 'Aprovados' },
-                    { id: 'todos', label: 'Todos' }
-                  ].map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={() => setFiltroStatusOrcamento(f.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
-                        filtroStatusOrcamento === f.id ? temaUnidade.botaoAtivo : 'bg-slate-950 text-slate-400 border border-slate-800'
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {orcamentosUnidade
-                  .filter((o) => filtroStatusOrcamento === 'todos' ? true : o.status === filtroStatusOrcamento)
-                  .map((orc) => {
-                    const listaItens = Array.isArray(orc.itens) ? orc.itens : [];
-                    const cliCadastrado = clientes.find((c) => c.nome.toLowerCase() === (orc.cliente || '').toLowerCase());
-                    const enderecoExibido = orc.endereco || cliCadastrado?.endereco || '';
-
-                    return (
-                      <div key={orc.id} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex flex-col justify-between gap-3">
-                        <div>
-                          <div className="flex justify-between items-start">
-                            <span className="text-[11px] text-slate-400">{orc.data} {orc.tipo_cliente ? `• ${orc.tipo_cliente}` : ''}</span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${orc.status === 'aprovado' ? 'bg-emerald-950 text-emerald-400' : 'bg-sky-950 text-sky-400'}`}>
-                              {orc.status === 'standby' ? 'Em Standby' : orc.status}
-                            </span>
-                          </div>
-                          <h4 className="font-bold text-base text-slate-100 mt-1">{orc.cliente}</h4>
-                          {orc.tel && <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5"><Phone size={11} /> {orc.tel}</p>}
-                          {enderecoExibido && <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5"><MapPin size={11} /> {enderecoExibido}</p>}
-                          {orc.forma_pgto && <p className="text-[11px] text-amber-300 mt-1">Pgto: {orc.forma_pgto}</p>}
-                          <div className="mt-2 space-y-1 text-xs text-slate-300 bg-slate-900 p-2 rounded-lg">
-                            {listaItens.map((it, idx) => (
-                              <div key={idx} className="flex justify-between">
-                                <span>{it.qtd}x {it.desc}</span>
-                                <span className="text-amber-400">R$ {(Number(it.qtd) * Number(it.valor)).toFixed(2)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-2">
-                          <span className="font-bold text-base text-emerald-400">R$ {Number(orc.total).toFixed(2)}</span>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {orc.status === 'standby' && (
-                              <button
-                                onClick={() => aprovarOrcamentoVirarOS(orc)}
-                                className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1"
-                              >
-                                <ShieldCheck size={13} /> Virar OS
-                              </button>
-                            )}
-                            <button
-                              onClick={() => dispararTextoOrcamentoWhatsApp({ ...orc, endereco: enderecoExibido })}
-                              className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1"
-                            >
-                              <Share2 size={12} /> WhatsApp
-                            </button>
-                            <button onClick={() => carregarOrcamentoParaEdicao(orc)} className="bg-slate-800 text-amber-400 p-1.5 rounded-lg">
-                              <Edit2 size={14} />
-                            </button>
-                            <button onClick={() => excluirOrcamentoSalvo(orc.id)} className="bg-slate-800 text-red-400 p-1.5 rounded-lg">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-          </div>
+          <AbaOrcamentos
+            temaUnidade={temaUnidade}
+            infoUnidadeAtual={infoUnidadeAtual}
+            unidadeOperacional={unidadeOperacional}
+            clientes={clientes}
+            mostrarToast={mostrarToast}
+            formAberto={formAberto}
+            toggleForm={toggleForm}
+            orcamento={orcamento}
+            setOrcamento={setOrcamento}
+            adicionarLinhaOrcamento={adicionarLinhaOrcamento}
+            removerLinhaOrcamento={removerLinhaOrcamento}
+            atualizarItemOrcamento={atualizarItemOrcamento}
+            totalOrcamento={totalOrcamento}
+            salvarOrcamentoStandby={salvarOrcamentoStandby}
+            filtroStatusOrcamento={filtroStatusOrcamento}
+            setFiltroStatusOrcamento={setFiltroStatusOrcamento}
+            orcamentosEmStandby={orcamentosEmStandby}
+            orcamentosUnidade={orcamentosUnidade}
+            aprovarOrcamentoVirarOS={aprovarOrcamentoVirarOS}
+            dispararTextoOrcamentoWhatsApp={dispararTextoOrcamentoWhatsApp}
+            carregarOrcamentoParaEdicao={carregarOrcamentoParaEdicao}
+            excluirOrcamentoSalvo={excluirOrcamentoSalvo}
+          />
         )}
 
         {abaAtiva === 'caixa' && (
-          <div className="space-y-5">
-            <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {[
-                  { id: 'hoje', label: 'Hoje' },
-                  { id: '7dias', label: '7 Dias' },
-                  { id: 'mes', label: 'Mês Atual' },
-                  { id: 'troco', label: 'Só Caixa Troco' },
-                  { id: 'areceber', label: `Fiado (R$ ${totalAReceber.toFixed(0)})` },
-                  { id: 'todos', label: 'Tudo' },
-                ].map((periodo) => (
-                  <button
-                    key={periodo.id}
-                    onClick={() => setFiltroPeriodoCaixa(periodo.id)}
-                    className={`px-3 py-2 rounded-lg text-xs font-bold transition ${
-                      filtroPeriodoCaixa === periodo.id
-                        ? temaUnidade.botaoAtivo
-                        : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
-                    }`}
-                  >
-                    {periodo.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setModalFechamentoCaixa(true)}
-                  className="bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5 shadow"
-                >
-                  <ClipboardCheck size={14} /> Fechar Caixa do Dia
-                </button>
-                <button
-                  onClick={() => abrirPortalNFSe()}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1.5"
-                >
-                  <Receipt size={14} /> NFS-e <ExternalLink size={11} />
-                </button>
-                <button
-                  onClick={exportarCSVRelatorio}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold px-3 py-2 rounded-lg flex items-center gap-1.5 border border-slate-700"
-                >
-                  <Download size={14} /> CSV
-                </button>
-              </div>
-            </div>
-
-            {diferencaReposicaoTroco > 0 && unidadeAtiva !== 'todas' && (
-              <div className="bg-amber-950/50 border border-amber-600/70 p-3 rounded-xl flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs text-amber-200">
-                  <strong>Caixa de Troco desfalcado:</strong> Saldo atual em <strong>R$ {saldoTrocoAtual.toFixed(2)}</strong> (Faltam <strong>R$ {diferencaReposicaoTroco.toFixed(2)}</strong> para completar a base de R$ {fundoTrocoBase.toFixed(2)}).
-                </div>
-                <button
-                  type="button"
-                  onClick={() => reporTrocoAutomatico(diferencaReposicaoTroco)}
-                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-1.5 rounded-lg"
-                >
-                  Repor R$ {diferencaReposicaoTroco.toFixed(2)} do Faturado
-                </button>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-              <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Faturado Bruto</span>
-                <p className="text-lg sm:text-xl font-bold text-emerald-400 mt-1">R$ {totalEntradas.toFixed(2)}</p>
-              </div>
-              <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Saídas Faturado</span>
-                <p className="text-lg sm:text-xl font-bold text-red-400 mt-1">R$ {totalSaidasFaturado.toFixed(2)}</p>
-              </div>
-              <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Saldo Faturado</span>
-                <p className={`text-lg sm:text-xl font-bold mt-1 ${saldoOperacionalFaturado >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
-                  R$ {saldoOperacionalFaturado.toFixed(2)}
-                </p>
-              </div>
-              <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Lucro Líquido Real</span>
-                <p className={`text-lg sm:text-xl font-bold mt-1 ${lucroRealPeriodo >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  R$ {lucroRealPeriodo.toFixed(2)}
-                </p>
-                <span className="text-[10px] text-slate-500">Insumos: R$ {custoInsumosPeriodo.toFixed(2)}</span>
-              </div>
-              <div
-                onClick={() => setModalConfigUnidades(true)}
-                className="cursor-pointer bg-sky-950/30 hover:border-sky-500/60 transition p-3.5 rounded-xl border border-sky-800/70"
-                title="Toque para configurar o valor base do Caixa de Troco"
-              >
-                <span className="text-xs text-sky-300 font-semibold flex items-center justify-between">
-                  Caixa de Troco <Edit2 size={11} />
-                </span>
-                <p className={`text-lg sm:text-xl font-bold mt-1 ${saldoTrocoAtual < fundoTrocoBase ? 'text-amber-400' : 'text-sky-400'}`}>
-                  R$ {saldoTrocoAtual.toFixed(2)}
-                </p>
-                <span className="text-[10px] text-slate-400">Base: R$ {fundoTrocoBase.toFixed(0)}</span>
-              </div>
-              <div className="bg-emerald-950/30 p-3.5 rounded-xl border border-emerald-800/70">
-                <span className="text-xs text-emerald-300 font-semibold block">Gaveta Física</span>
-                <p className="text-lg sm:text-xl font-bold text-emerald-400 mt-1">R$ {totalGavetaFisica.toFixed(2)}</p>
-                <span className="text-[10px] text-slate-400">Troco + Dinheiro Vendas</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 bg-slate-900/60 p-3 rounded-xl border border-slate-800 text-xs">
-              <div>
-                <span className="text-slate-400 block">Pix (Faturado):</span>
-                <strong className="text-emerald-400">R$ {entradasPix.toFixed(2)}</strong>
-              </div>
-              <div>
-                <span className="text-slate-400 block">Dinheiro (Faturado):</span>
-                <strong className="text-amber-400">R$ {liquidoDinheiroFaturado.toFixed(2)}</strong>
-              </div>
-              <div>
-                <span className="text-slate-400 block">Cartão (Faturado):</span>
-                <strong className="text-sky-400">R$ {entradasCartao.toFixed(2)}</strong>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className={`font-bold text-sm ${temaUnidade.textoDestaque}`}>Movimentações ({transacoesFiltradas.length})</h3>
-                  <button
-                    onClick={() => toggleForm('caixa')}
-                    className={`${temaUnidade.botaoAtivo} text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1`}
-                  >
-                    {formAberto.caixa ? <><X size={13} /> Fechar</> : <><Plus size={13} /> Movimentar Caixa</>}
-                  </button>
-                </div>
-
-                {formAberto.caixa && (
-                  <form onSubmit={adicionarTransacaoManual} className="space-y-2.5 bg-slate-950 p-3 rounded-xl border border-slate-700">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <select
-                        value={novaTransacao.origem_caixa}
-                        onChange={(e) => setNovaTransacao({
-                          ...novaTransacao,
-                          origem_caixa: e.target.value,
-                          forma: e.target.value === 'troco' ? 'Dinheiro' : novaTransacao.forma
-                        })}
-                        className="bg-slate-900 border border-sky-700 rounded-lg px-3 py-2 text-xs font-bold text-sky-300"
-                      >
-                        <option value="faturado">Caixa: Faturado (Vendas)</option>
-                        <option value="troco">Caixa: Troco (R$ {fundoTrocoBase})</option>
-                      </select>
-
-                      <select
-                        value={novaTransacao.tipo}
-                        onChange={(e) => setNovaTransacao({ ...novaTransacao, tipo: e.target.value })}
-                        className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs font-bold"
-                      >
-                        <option value="saida">Retirada / Saída (-)</option>
-                        <option value="entrada">Entrada / Reposição (+)</option>
-                      </select>
-
-                      <select
-                        value={novaTransacao.origem_caixa === 'troco' ? 'Dinheiro' : novaTransacao.forma}
-                        disabled={novaTransacao.origem_caixa === 'troco'}
-                        onChange={(e) => setNovaTransacao({ ...novaTransacao, forma: e.target.value })}
-                        className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs disabled:opacity-60"
-                      >
-                        <option>Dinheiro</option>
-                        <option>Pix</option>
-                        <option>Cartão de Débito</option>
-                        <option>Cartão de Crédito</option>
-                        <option>A Receber (Fiado)</option>
-                      </select>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <input
-                        type="text"
-                        placeholder={novaTransacao.origem_caixa === 'troco' ? 'Motivo (Ex: Troco p/ cliente / Sangria troco)' : 'Descrição (Ex: Compra de chaves / Almoço)'}
-                        required
-                        value={novaTransacao.desc}
-                        onChange={(e) => setNovaTransacao({ ...novaTransacao, desc: e.target.value })}
-                        className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                      />
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          placeholder="Valor R$"
-                          required
-                          value={novaTransacao.valor}
-                          onChange={(e) => setNovaTransacao({ ...novaTransacao, valor: e.target.value })}
-                          className="w-28 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                        />
-                        <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2 rounded-lg text-xs`}>
-                          Salvar
-                        </button>
-                      </div>
-                    </div>
-                  </form>
-                )}
-
-                <div className="space-y-2.5 max-h-[460px] overflow-y-auto">
-                  {transacoesFiltradas.map((t) => {
-                    const ehTrocoItem = isMovimentacaoTroco(t);
-                    return (
-                      <div key={t.id} className={`bg-slate-950 p-3 rounded-xl border text-xs space-y-2 ${ehTrocoItem ? 'border-sky-800/70' : 'border-slate-800'}`}>
-                        {transacaoEditando && transacaoEditando.id === t.id ? (
-                          <div className="space-y-2.5">
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                              <select
-                                value={transacaoEditando.origem_caixa || (isMovimentacaoTroco(transacaoEditando) ? 'troco' : 'faturado')}
-                                onChange={(e) => setTransacaoEditando({
-                                  ...transacaoEditando,
-                                  origem_caixa: e.target.value,
-                                  forma: e.target.value === 'troco' ? 'Dinheiro' : transacaoEditando.forma
-                                })}
-                                className="bg-slate-900 border border-sky-700 rounded-lg px-2.5 py-2 text-xs text-sky-300 font-bold"
-                              >
-                                <option value="faturado">Caixa: Faturado</option>
-                                <option value="troco">Caixa: Troco</option>
-                              </select>
-                              <select
-                                value={transacaoEditando.tipo}
-                                onChange={(e) => setTransacaoEditando({ ...transacaoEditando, tipo: e.target.value })}
-                                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs"
-                              >
-                                <option value="entrada">Entrada (+)</option>
-                                <option value="saida">Saída (-)</option>
-                              </select>
-                              <select
-                                value={(transacaoEditando.origem_caixa === 'troco') ? 'Dinheiro' : transacaoEditando.forma}
-                                disabled={transacaoEditando.origem_caixa === 'troco'}
-                                onChange={(e) => setTransacaoEditando({ ...transacaoEditando, forma: e.target.value })}
-                                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-xs disabled:opacity-60"
-                              >
-                                <option>Pix</option>
-                                <option>Dinheiro</option>
-                                <option>Cartão de Crédito</option>
-                                <option>Cartão de Débito</option>
-                                <option>Boleto</option>
-                                <option>A Receber (Fiado)</option>
-                              </select>
-                            </div>
-                            <input
-                              type="text"
-                              value={transacaoEditando.desc.replace(/^\[TROCO\]\s*/i, '')}
-                              onChange={(e) => setTransacaoEditando({ ...transacaoEditando, desc: e.target.value })}
-                              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm"
-                            />
-                            <div className="flex items-center justify-between gap-2">
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={transacaoEditando.valor}
-                                onChange={(e) => setTransacaoEditando({ ...transacaoEditando, valor: e.target.value })}
-                                className="w-32 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm font-bold text-amber-400"
-                              />
-                              <div className="flex gap-2">
-                                <button onClick={salvarEdicaoTransacao} className="bg-emerald-500 text-slate-950 font-bold px-3 py-2 rounded-lg flex items-center gap-1">
-                                  <Check size={14} /> Salvar
-                                </button>
-                                <button onClick={() => setTransacaoEditando(null)} className="bg-slate-800 text-slate-300 px-3 py-2 rounded-lg flex items-center gap-1">
-                                  <X size={14} /> Cancelar
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <div>
-                              <div className="flex items-center gap-1.5 mb-0.5">
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${ehTrocoItem ? 'bg-sky-950 text-sky-300 border border-sky-700/60' : 'bg-slate-800 text-slate-300'}`}>
-                                  {ehTrocoItem ? 'Caixa Troco' : 'Faturado'}
-                                </span>
-                                <span className="text-slate-500 text-[11px]">
-                                  {t.data} • {t.forma} {unidadeAtiva === 'todas' ? `• ${(t.unidade || 'ponto1').toUpperCase()}` : ''}
-                                </span>
-                              </div>
-                              <p className="font-semibold text-slate-100 text-sm leading-snug break-words">
-                                {t.desc.replace(/^\[TROCO\]\s*/i, '')}
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-2">
-                              <span className={`text-sm font-bold ${t.tipo === 'entrada' ? (t.forma === 'A Receber (Fiado)' ? 'text-purple-400' : 'text-emerald-400') : 'text-red-400'}`}>
-                                {t.tipo === 'entrada' ? '+' : '-'} R$ {Number(t.valor).toFixed(2)}
-                              </span>
-                              <div className="flex items-center gap-1.5">
-                                {t.tipo === 'entrada' && !ehTrocoItem && (
-                                  <button
-                                    onClick={() => abrirPortalNFSe({ cliente: 'Cliente', desc: t.desc, valor: t.valor })}
-                                    className="bg-indigo-950 hover:bg-indigo-900 text-indigo-300 px-2 py-1.5 rounded-lg border border-indigo-800 flex items-center gap-1 text-[11px] font-semibold"
-                                    title="Copiar dados e abrir Portal NFS-e"
-                                  >
-                                    <Receipt size={12} /> NFS-e
-                                  </button>
-                                )}
-                                {t.forma === 'A Receber (Fiado)' && (
-                                  <button onClick={() => quitarPendenciaReceber(t)} className="bg-purple-600 hover:bg-purple-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold">
-                                    Receber
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => setTransacaoEditando({
-                                    ...t,
-                                    origem_caixa: isMovimentacaoTroco(t) ? 'troco' : 'faturado'
-                                  })}
-                                  className="bg-slate-900 text-amber-400 p-1.5 rounded-lg border border-slate-800"
-                                >
-                                  <Edit2 size={13} />
-                                </button>
-                                <button onClick={() => excluirTransacao(t.id)} className="bg-slate-900 text-red-400 p-1.5 rounded-lg border border-slate-800">
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className={`font-bold text-sm ${temaUnidade.textoDestaque}`}>Calendário de Boletos ({contasUnidade.length})</h3>
-                  <button
-                    onClick={() => toggleForm('boleto')}
-                    className={`${temaUnidade.botaoAtivo} text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1`}
-                  >
-                    {formAberto.boleto ? <><X size={13} /> Fechar</> : <><Plus size={13} /> Agendar Boleto</>}
-                  </button>
-                </div>
-
-                {formAberto.boleto && (
-                  <form onSubmit={criarContaPagar} className="space-y-2 bg-slate-950 p-3 rounded-xl border border-slate-700">
-                    <input
-                      type="text"
-                      placeholder="Descrição do Boleto / Fornecedor / Aluguel *"
-                      required
-                      value={novaConta.desc}
-                      onChange={(e) => setNovaConta({ ...novaConta, desc: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                    />
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        placeholder="Valor R$ *"
-                        required
-                        value={novaConta.valor}
-                        onChange={(e) => setNovaConta({ ...novaConta, valor: e.target.value })}
-                        className="w-32 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                      />
-                      <input
-                        type="date"
-                        required
-                        value={novaConta.vencimento}
-                        onChange={(e) => setNovaConta({ ...novaConta, vencimento: e.target.value })}
-                        className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm"
-                      />
-                      <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold px-4 rounded-lg text-xs`}>
-                        Salvar
-                      </button>
-                    </div>
-                  </form>
-                )}
-
-                <div className="space-y-2.5 max-h-[460px] overflow-y-auto">
-                  {contasUnidade.map((c) => {
-                    const vencido = c.status === 'pendente' && c.vencimento < hojeISO;
-                    const venceHoje = c.status === 'pendente' && c.vencimento === hojeISO;
-                    return (
-                      <div key={c.id} className={`p-3 rounded-xl border text-xs space-y-2 ${vencido ? 'bg-red-950/30 border-red-800' : venceHoje ? 'bg-amber-950/30 border-amber-700' : 'bg-slate-950 border-slate-800'}`}>
-                        <div className="flex justify-between items-start gap-2">
-                          <div>
-                            <p className="font-bold text-sm text-slate-100">{c.desc}</p>
-                            <span className="text-slate-400 block mt-0.5">
-                              Vencimento: <strong>{c.vencimento}</strong>
-                              {vencido && <span className="text-red-400 font-bold ml-1.5">(VENCIDO)</span>}
-                              {venceHoje && <span className="text-amber-400 font-bold ml-1.5">(VENCE HOJE)</span>}
-                            </span>
-                          </div>
-                          <span className="font-bold text-sm text-amber-400 shrink-0">R$ {Number(c.valor).toFixed(2)}</span>
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-2">
-                          {c.status === 'pendente' ? (
-                            <div className="flex flex-wrap gap-1.5">
-                              <button onClick={() => darBaixaBoleto(c, false)} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-2.5 py-1.5 rounded-lg text-xs">
-                                Só Marcar Pago (Sem Caixa)
-                              </button>
-                              <button onClick={() => darBaixaBoleto(c, true)} className="bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold px-2.5 py-1.5 rounded-lg text-xs border border-slate-700">
-                                Pagar c/ Caixa
-                              </button>
-                            </div>
-                          ) : (
-                            <button onClick={() => reabrirBoleto(c)} className="text-emerald-400 font-bold hover:underline">
-                              Quitado na Agenda (Toque p/ reabrir)
-                            </button>
-                          )}
-                          <button onClick={() => excluirContaPagar(c.id)} className="text-red-400 p-1">
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
+          <AbaCaixa
+            temaUnidade={temaUnidade}
+            unidadeAtiva={unidadeAtiva}
+            infoUnidadeAtual={infoUnidadeAtual}
+            fundoTrocoBase={fundoTrocoBase}
+            filtroPeriodoCaixa={filtroPeriodoCaixa}
+            setFiltroPeriodoCaixa={setFiltroPeriodoCaixa}
+            totalAReceber={totalAReceber}
+            setModalFechamentoCaixa={setModalFechamentoCaixa}
+            abrirPortalNFSe={abrirPortalNFSe}
+            exportarCSVRelatorio={exportarCSVRelatorio}
+            diferencaReposicaoTroco={diferencaReposicaoTroco}
+            saldoTrocoAtual={saldoTrocoAtual}
+            reporTrocoAutomatico={reporTrocoAutomatico}
+            totalEntradas={totalEntradas}
+            totalSaidasFaturado={totalSaidasFaturado}
+            saldoOperacionalFaturado={saldoOperacionalFaturado}
+            lucroRealPeriodo={lucroRealPeriodo}
+            custoInsumosPeriodo={custoInsumosPeriodo}
+            setModalConfigUnidades={setModalConfigUnidades}
+            totalGavetaFisica={totalGavetaFisica}
+            entradasPix={entradasPix}
+            liquidoDinheiroFaturado={liquidoDinheiroFaturado}
+            entradasCartao={entradasCartao}
+            transacoesFiltradas={transacoesFiltradas}
+            isMovimentacaoTroco={isMovimentacaoTroco}
+            formAberto={formAberto}
+            toggleForm={toggleForm}
+            novaTransacao={novaTransacao}
+            setNovaTransacao={setNovaTransacao}
+            adicionarTransacaoManual={adicionarTransacaoManual}
+            transacaoEditando={transacaoEditando}
+            setTransacaoEditando={setTransacaoEditando}
+            salvarEdicaoTransacao={salvarEdicaoTransacao}
+            quitarPendenciaReceber={quitarPendenciaReceber}
+            excluirTransacao={excluirTransacao}
+            contasUnidade={contasUnidade}
+            novaConta={novaConta}
+            setNovaConta={setNovaConta}
+            criarContaPagar={criarContaPagar}
+            darBaixaBoleto={darBaixaBoleto}
+            reabrirBoleto={reabrirBoleto}
+            excluirContaPagar={excluirContaPagar}
+            hojeISO={hojeISO}
+          />
         )}
 
         {abaAtiva === 'estoque' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
-                Estoque — {infoUnidadeAtual.nome} ({estoqueUnidade.length})
-              </h2>
-              <button
-                onClick={() => toggleForm('estoque')}
-                className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow`}
-              >
-                {formAberto.estoque ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Cadastrar Chave / Produto</>}
-              </button>
-            </div>
-
-            {itensEstoqueBaixo.length > 0 && (
-              <div className="bg-red-950/50 border border-red-800 p-3 rounded-xl flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs text-red-300 font-medium">
-                  Alerta: <strong>{itensEstoqueBaixo.length} modelo(s)</strong> atingiram o estoque mínimo.
-                </span>
-                <div className="flex gap-2">
-                  <button onClick={gerarPedidoDistribuidorWhatsApp} className="bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1">
-                    <Share2 size={13} /> Pedido WhatsApp
-                  </button>
-                  <button onClick={() => setApenasEstoqueBaixo(!apenasEstoqueBaixo)} className="bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg">
-                    {apenasEstoqueBaixo ? 'Ver Todos' : 'Filtrar Baixos'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Modelos ({infoUnidadeAtual.nome})</span>
-                <p className="text-xl font-bold text-slate-100 mt-1">{estoqueUnidade.length} itens</p>
-              </div>
-              <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Capital Investido (Custo)</span>
-                <p className="text-xl font-bold text-amber-400 mt-1">R$ {capitalTotalEstoque.toFixed(2)}</p>
-              </div>
-              <div className="bg-slate-900 p-3.5 rounded-xl border border-slate-800">
-                <span className="text-xs text-slate-400">Potencial de Venda</span>
-                <p className="text-xl font-bold text-emerald-400 mt-1">R$ {potencialVendaEstoque.toFixed(2)}</p>
-              </div>
-            </div>
-
-            {formAberto.estoque && (
-              <form onSubmit={salvarNovaChave} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 shadow-lg">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-amber-400 text-sm">
-                    {editandoEstoqueId ? `Editando Item: ${editandoEstoqueId}` : 'Cadastrar Novo Item'}
-                  </span>
-                  {editandoEstoqueId && (
-                    <button type="button" onClick={cancelarEdicaoEstoque} className="text-xs text-slate-400 flex items-center gap-1">
-                      <X size={14} /> Cancelar Edição
-                    </button>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
-                  <input
-                    type="text"
-                    placeholder="Código (Ex: Y1)"
-                    value={novaChave.id}
-                    disabled={!!editandoEstoqueId}
-                    onChange={(e) => setNovaChave({ ...novaChave, id: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm disabled:opacity-50"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Nome da Chave / Fechadura *"
-                    required
-                    value={novaChave.nome}
-                    onChange={(e) => setNovaChave({ ...novaChave, nome: e.target.value })}
-                    className="col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <select
-                    value={novaChave.cat}
-                    onChange={(e) => setNovaChave({ ...novaChave, cat: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  >
-                    <option>Yale / Comum</option>
-                    <option>Tetra</option>
-                    <option>Automotiva / Canivete</option>
-                    <option>Multiponto</option>
-                    <option>Gorge / Antiga</option>
-                    <option>Fechaduras / Cadeados</option>
-                  </select>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Qtd"
-                    value={novaChave.qtd}
-                    onChange={(e) => setNovaChave({ ...novaChave, qtd: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="Custo R$"
-                    value={novaChave.custo}
-                    onChange={(e) => setNovaChave({ ...novaChave, custo: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="Venda R$ *"
-                    required
-                    value={novaChave.venda}
-                    onChange={(e) => setNovaChave({ ...novaChave, venda: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                </div>
-                <button type="submit" className={`w-full sm:w-auto ${temaUnidade.botaoAtivo} font-bold px-5 py-2.5 rounded-lg text-sm`}>
-                  {editandoEstoqueId ? 'Salvar Alterações' : 'Salvar no Estoque'}
-                </button>
-              </form>
-            )}
-
-            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    placeholder="Buscar código ou nome..."
-                    value={buscaEstoque}
-                    onChange={(e) => setBuscaEstoque(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-3 pr-9 py-2 text-xs"
-                  />
-                  {buscaEstoque && (
-                    <button
-                      type="button"
-                      onClick={() => setBuscaEstoque('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-                <select
-                  value={filtroCatEstoque}
-                  onChange={(e) => setFiltroCatEstoque(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs"
-                >
-                  <option value="Todas">Todas as Categorias</option>
-                  <option>Yale / Comum</option>
-                  <option>Tetra</option>
-                  <option>Automotiva / Canivete</option>
-                  <option>Multiponto</option>
-                  <option>Gorge / Antiga</option>
-                  <option>Fechaduras / Cadeados</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {estoqueFiltrado.map((item) => {
-                  const custo = Number(item.custo || 0);
-                  const venda = Number(item.venda || 0);
-                  const lucro = venda - custo;
-                  return (
-                    <div key={item.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col justify-between gap-2">
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <span className="text-[11px] font-mono bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded mr-1.5">{item.id}</span>
-                          <span className="text-[11px] text-slate-400">{item.cat}</span>
-                          <h4 className="font-bold text-sm text-slate-100 mt-1">{item.nome}</h4>
-                        </div>
-                        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold shrink-0 ${item.qtd <= item.minimo ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-slate-800 text-emerald-400'}`}>
-                          {item.qtd} un
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-900 pt-2 text-xs">
-                        <div className="space-x-3">
-                          <span className="text-slate-400">Custo: <strong>R$ {custo.toFixed(2)}</strong></span>
-                          <span className="text-amber-400">Venda: <strong>R$ {venda.toFixed(2)}</strong></span>
-                          <span className="text-emerald-400">Lucro: <strong>+R$ {lucro.toFixed(2)}</strong></span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <button onClick={() => alterarQtdEstoque(item, 1)} className="bg-slate-800 px-2.5 py-1.5 rounded-lg font-bold">+1</button>
-                          <button onClick={() => alterarQtdEstoque(item, -1)} className="bg-slate-800 px-2.5 py-1.5 rounded-lg font-bold">-1</button>
-                          <button onClick={() => iniciarEdicaoEstoque(item)} className="bg-slate-900 text-amber-400 p-1.5 rounded-lg border border-slate-800">
-                            <Edit2 size={14} />
-                          </button>
-                          <button onClick={() => excluirItemEstoque(item.id)} className="bg-slate-900 text-red-400 p-1.5 rounded-lg border border-slate-800">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+          <AbaEstoque
+            temaUnidade={temaUnidade}
+            infoUnidadeAtual={infoUnidadeAtual}
+            estoqueUnidade={estoqueUnidade}
+            itensEstoqueBaixo={itensEstoqueBaixo}
+            gerarPedidoDistribuidorWhatsApp={gerarPedidoDistribuidorWhatsApp}
+            apenasEstoqueBaixo={apenasEstoqueBaixo}
+            setApenasEstoqueBaixo={setApenasEstoqueBaixo}
+            capitalTotalEstoque={capitalTotalEstoque}
+            potencialVendaEstoque={potencialVendaEstoque}
+            formAberto={formAberto}
+            toggleForm={toggleForm}
+            editandoEstoqueId={editandoEstoqueId}
+            cancelarEdicaoEstoque={cancelarEdicaoEstoque}
+            salvarNovaChave={salvarNovaChave}
+            novaChave={novaChave}
+            setNovaChave={setNovaChave}
+            buscaEstoque={buscaEstoque}
+            setBuscaEstoque={setBuscaEstoque}
+            filtroCatEstoque={filtroCatEstoque}
+            setFiltroCatEstoque={setFiltroCatEstoque}
+            estoqueFiltrado={estoqueFiltrado}
+            alterarQtdEstoque={alterarQtdEstoque}
+            iniciarEdicaoEstoque={iniciarEdicaoEstoque}
+            excluirItemEstoque={excluirItemEstoque}
+          />
         )}
 
         {abaAtiva === 'clientes' && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
-                Base de Clientes ({clientes.length})
-              </h2>
-              <button
-                onClick={() => {
-                  if (formAberto.cliente) {
-                    cancelarEdicaoCliente();
-                  } else {
-                    setNovoCliente({ id: null, nome: '', tel: '', endereco: '', tipo: 'Residencial', obs: '' });
-                    toggleForm('cliente', true);
-                  }
-                }}
-                className={`${temaUnidade.botaoAtivo} font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow`}
-              >
-                {formAberto.cliente ? <><X size={16} /> Fechar Formulário</> : <><Plus size={16} /> Cadastrar Cliente</>}
-              </button>
-            </div>
-
-            {formAberto.cliente && (
-              <form onSubmit={salvarCliente} className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 shadow-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase text-amber-400">
-                    {novoCliente.id ? `Editando Cliente: ${novoCliente.nome}` : 'Novo Cadastro de Cliente'}
-                  </span>
-                  {novoCliente.id && (
-                    <button type="button" onClick={cancelarEdicaoCliente} className="text-xs text-slate-400 hover:text-white flex items-center gap-1">
-                      <X size={14} /> Cancelar Edição
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                  <input
-                    type="text"
-                    placeholder="Nome / Referência *"
-                    required
-                    value={novoCliente.nome}
-                    onChange={(e) => setNovoCliente({ ...novoCliente, nome: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <input
-                    type="tel"
-                    placeholder="WhatsApp (com DDD)"
-                    value={novoCliente.tel}
-                    onChange={(e) => setNovoCliente({ ...novoCliente, tel: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Endereço Completo"
-                    value={novoCliente.endereco}
-                    onChange={(e) => setNovoCliente({ ...novoCliente, endereco: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                  <select
-                    value={novoCliente.tipo}
-                    onChange={(e) => setNovoCliente({ ...novoCliente, tipo: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  >
-                    <option>Residencial</option>
-                    <option>Comercial / Condomínio</option>
-                    <option>Automotivo</option>
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="Obs (CPF/CNPJ, Placa, Fechadura)"
-                    value={novoCliente.obs}
-                    onChange={(e) => setNovoCliente({ ...novoCliente, obs: e.target.value })}
-                    className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2.5 text-sm"
-                  />
-                </div>
-                <button type="submit" className={`${temaUnidade.botaoAtivo} font-bold px-5 py-2.5 rounded-lg text-sm`}>
-                  {novoCliente.id ? 'Salvar Alterações do Cliente' : 'Guardar Cliente'}
-                </button>
-              </form>
-            )}
-
-            {clienteHistoricoSelecionado && (
-              <div className="bg-slate-900 p-4 rounded-xl border-2 border-amber-500 space-y-3">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-amber-400 text-sm">
-                    Histórico Completo (PDV, OS e Socorros): {clienteHistoricoSelecionado.nome}
-                  </h3>
-                  <button onClick={() => setClienteHistoricoSelecionado(null)} className="text-slate-400">
-                    <X size={18} />
-                  </button>
-                </div>
-                <div className="space-y-2 text-xs max-h-64 overflow-y-auto">
-                  {transacoes
-                    .filter((t) => t.desc.toLowerCase().includes(clienteHistoricoSelecionado.nome.toLowerCase()))
-                    .map((t) => (
-                      <div key={t.id} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex justify-between items-center">
-                        <span>{t.data} — {t.desc}</span>
-                        <span className="text-emerald-400 font-bold shrink-0 ml-2">R$ {Number(t.valor).toFixed(2)}</span>
-                      </div>
-                    ))}
-                  {transacoes.filter((t) => t.desc.toLowerCase().includes(clienteHistoricoSelecionado.nome.toLowerCase())).length === 0 && (
-                    <p className="text-slate-500">Nenhuma movimentação encontrada para este nome.</p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Pesquisar cliente por nome, telefone ou observação..."
-                  value={buscaClienteCrm}
-                  onChange={(e) => setBuscaClienteCrm(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-4 pr-10 py-2.5 text-sm"
-                />
-                {buscaClienteCrm && (
-                  <button
-                    type="button"
-                    onClick={() => setBuscaClienteCrm('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1"
-                  >
-                    <X size={16} />
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {clientes
-                  .filter((c) => c.nome.toLowerCase().includes(buscaClienteCrm.toLowerCase()) || (c.tel || '').includes(buscaClienteCrm) || (c.obs || '').toLowerCase().includes(buscaClienteCrm.toLowerCase()))
-                  .map((c) => (
-                    <div key={c.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex flex-col justify-between gap-3">
-                      <div className="flex justify-between items-start gap-2">
-                        <div className="min-w-0">
-                          <span className="text-[10px] bg-slate-800 text-amber-400 px-2 py-0.5 rounded">{c.tipo}</span>
-                          <h3 className="font-bold text-base mt-1 truncate">{c.nome}</h3>
-                          <p className="text-xs text-slate-400 mt-1 flex items-center gap-1"><Phone size={12} /> {c.tel || 'Sem telefone'}</p>
-                          <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1"><MapPin size={12} /> {c.endereco || 'Sem endereço'}</p>
-                          {c.obs && <p className="text-xs text-amber-300/80 mt-1 break-words">{c.obs}</p>}
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => iniciarEdicaoCliente(c)}
-                            className="bg-slate-950 hover:bg-slate-800 text-amber-400 p-1.5 rounded-lg border border-slate-800"
-                            title="Editar dados do cliente"
-                          >
-                            <Edit2 size={15} />
-                          </button>
-                          <button
-                            onClick={() => excluirCliente(c.id)}
-                            className="bg-slate-950 hover:bg-slate-800 text-red-400 p-1.5 rounded-lg border border-slate-800"
-                            title="Excluir cliente"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setClienteHistoricoSelecionado(c)}
-                        className="w-full bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs text-amber-400 font-semibold py-2 rounded-lg"
-                      >
-                        Ver Histórico & Garantias
-                      </button>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          </div>
+          <AbaClientes
+            temaUnidade={temaUnidade}
+            clientes={clientes}
+            transacoes={transacoes}
+            formAberto={formAberto}
+            toggleForm={toggleForm}
+            novoCliente={novoCliente}
+            setNovoCliente={setNovoCliente}
+            salvarCliente={salvarCliente}
+            iniciarEdicaoCliente={iniciarEdicaoCliente}
+            cancelarEdicaoCliente={cancelarEdicaoCliente}
+            excluirCliente={excluirCliente}
+            buscaClienteCrm={buscaClienteCrm}
+            setBuscaClienteCrm={setBuscaClienteCrm}
+            clienteHistoricoSelecionado={clienteHistoricoSelecionado}
+            setClienteHistoricoSelecionado={setClienteHistoricoSelecionado}
+          />
         )}
       </main>
 
