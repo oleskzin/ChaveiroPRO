@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Plus,
   X,
@@ -9,9 +9,12 @@ import {
   CheckCircle,
   Share2,
   Receipt,
-  Trash2
+  Trash2,
+  Search,
+  MessageCircle
 } from 'lucide-react';
 import ClienteAutocomplete from './ClienteAutocomplete';
+import { montarURLWhatsAppSeguro } from '../utils/formatters';
 
 export default function AbaOS({
   temaUnidade,
@@ -44,11 +47,35 @@ export default function AbaOS({
   abrirPortalNFSe,
   excluirOS
 }) {
+  const [buscaOS, setBuscaOS] = useState('');
+
+  const termoLimpo = buscaOS.trim().toLowerCase();
+  const osFiltradasBusca = termoLimpo
+    ? osExibidas.filter(
+        (os) =>
+          (os.cliente || '').toLowerCase().includes(termoLimpo) ||
+          (os.tel || '').includes(termoLimpo) ||
+          (os.endereco || '').toLowerCase().includes(termoLimpo) ||
+          (os.desc || '').toLowerCase().includes(termoLimpo) ||
+          String(os.id).slice(-4).includes(termoLimpo)
+      )
+    : osExibidas;
+
+  const chamarClienteOSWhatsApp = (os) => {
+    const msg = `Olá ${os.cliente || ''}! Aqui é do *Luisinho Chaveiro* (${infoUnidadeAtual.nome}). Sobre sua Ordem de Serviço Nº ${String(os.id).slice(-4)} (${os.desc}): `;
+    const url = montarURLWhatsAppSeguro(os.tel, msg);
+    if (!url) {
+      mostrarToast('Cliente sem WhatsApp válido cadastrado nesta OS.', 'erro');
+      return;
+    }
+    window.open(url, '_blank');
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
-          Ordens de Serviço — {infoUnidadeAtual.nome} ({osExibidas.length})
+          Ordens de Serviço — {infoUnidadeAtual.nome} ({osFiltradasBusca.length})
         </h2>
         <button
           type="button"
@@ -59,23 +86,45 @@ export default function AbaOS({
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {[
-          { id: 'pendente', label: `Pendentes (${osPendentes.length})` },
-          { id: 'concluida', label: `Concluídas (${osConcluidas.length})` },
-          { id: 'todas', label: `Todas (${osUnidade.length})` }
-        ].map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFiltroStatusOS(f.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
-              filtroStatusOS === f.id ? temaUnidade.botaoAtivo : 'bg-slate-900 text-slate-400 border border-slate-800'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            { id: 'pendente', label: `Pendentes (${osPendentes.length})` },
+            { id: 'concluida', label: `Concluídas (${osConcluidas.length})` },
+            { id: 'todas', label: `Todas (${osUnidade.length})` }
+          ].map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFiltroStatusOS(f.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                filtroStatusOS === f.id ? temaUnidade.botaoAtivo : 'bg-slate-900 text-slate-400 border border-slate-800'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative w-full sm:w-72">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Buscar OS (cliente, nº, placa, local)..."
+            value={buscaOS}
+            onChange={(e) => setBuscaOS(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-8 pr-8 py-1.5 text-xs text-slate-200"
+          />
+          {buscaOS && (
+            <button
+              type="button"
+              onClick={() => setBuscaOS('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       {formAberto.os && (
@@ -265,7 +314,7 @@ export default function AbaOS({
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {osExibidas.map((os) => {
+        {osFiltradasBusca.map((os) => {
           const listaMat = Array.isArray(os.itens_usados) && os.itens_usados.length > 0
             ? os.itens_usados
             : (os.chave_id ? [{ id: os.chave_id, nome: os.chave_id, qtd: os.qtd_copias }] : []);
@@ -301,15 +350,27 @@ export default function AbaOS({
               </div>
 
               <div className="space-y-2 border-t border-slate-800 pt-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
                   <span className="font-bold text-base text-amber-400">R$ {Number(os.valor).toFixed(2)}</span>
-                  <button
-                    type="button"
-                    onClick={() => enviarDiretoParaFuncionario('os', os)}
-                    className="bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow"
-                  >
-                    <Send size={13} /> Enviar p/ {nomeFuncExibido || 'Funcionário'}
-                  </button>
+                  <div className="flex flex-wrap gap-1.5">
+                    {os.tel && (
+                      <button
+                        type="button"
+                        onClick={() => chamarClienteOSWhatsApp(os)}
+                        className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-bold px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-slate-700"
+                        title="Abrir conversa com o cliente"
+                      >
+                        <MessageCircle size={13} /> Cliente
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => enviarDiretoParaFuncionario('os', os)}
+                      className="bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow"
+                    >
+                      <Send size={13} /> Enviar p/ {nomeFuncExibido || 'Funcionário'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-1.5">

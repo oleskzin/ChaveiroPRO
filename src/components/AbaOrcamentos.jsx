@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Plus,
   X,
@@ -8,7 +8,8 @@ import {
   Phone,
   MapPin,
   ShieldCheck,
-  Edit2
+  Edit2,
+  Search
 } from 'lucide-react';
 import ClienteAutocomplete from './ClienteAutocomplete';
 
@@ -36,15 +37,27 @@ export default function AbaOrcamentos({
   carregarOrcamentoParaEdicao,
   excluirOrcamentoSalvo
 }) {
-  const orcamentosFiltrados = orcamentosUnidade.filter((o) =>
-    filtroStatusOrcamento === 'todos' ? true : o.status === filtroStatusOrcamento
-  );
+  const [buscaOrcamento, setBuscaOrcamento] = useState('');
+
+  const termoLimpo = buscaOrcamento.trim().toLowerCase();
+  const orcamentosFiltrados = orcamentosUnidade.filter((o) => {
+    const bateStatus = filtroStatusOrcamento === 'todos' ? true : o.status === filtroStatusOrcamento;
+    if (!bateStatus) return false;
+    if (!termoLimpo) return true;
+    const itensTexto = Array.isArray(o.itens) ? o.itens.map((i) => i.desc).join(' ') : '';
+    return (
+      (o.cliente || '').toLowerCase().includes(termoLimpo) ||
+      (o.tel || '').includes(termoLimpo) ||
+      (o.endereco || '').toLowerCase().includes(termoLimpo) ||
+      itensTexto.toLowerCase().includes(termoLimpo)
+    );
+  });
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
-          Orçamentos em Standby — {infoUnidadeAtual.nome}
+          Orçamentos em Standby — {infoUnidadeAtual.nome} ({orcamentosFiltrados.length})
         </h2>
         <button
           type="button"
@@ -212,8 +225,7 @@ export default function AbaOrcamentos({
       )}
 
       <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs font-bold text-slate-400 uppercase">Filtrar Fila</span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex gap-1.5">
             {[
               { id: 'standby', label: `Aguardando (${orcamentosEmStandby.length})` },
@@ -231,6 +243,26 @@ export default function AbaOrcamentos({
                 {f.label}
               </button>
             ))}
+          </div>
+
+          <div className="relative w-full sm:w-72">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar orçamento (cliente, item, rua)..."
+              value={buscaOrcamento}
+              onChange={(e) => setBuscaOrcamento(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-8 py-1.5 text-xs text-slate-200"
+            />
+            {buscaOrcamento && (
+              <button
+                type="button"
+                onClick={() => setBuscaOrcamento('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
         </div>
 

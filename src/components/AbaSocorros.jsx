@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Plus,
   X,
@@ -6,9 +6,13 @@ import {
   MapPin,
   CheckCircle,
   Share2,
-  Trash2
+  Trash2,
+  Search,
+  Navigation,
+  MessageCircle
 } from 'lucide-react';
 import ClienteAutocomplete from './ClienteAutocomplete';
+import { montarURLWhatsAppSeguro } from '../utils/formatters';
 
 export default function AbaSocorros({
   temaUnidade,
@@ -39,11 +43,40 @@ export default function AbaSocorros({
   setComprovanteAtivo,
   excluirAgendamento
 }) {
+  const [buscaSocorro, setBuscaSocorro] = useState('');
+
+  const termoLimpo = buscaSocorro.trim().toLowerCase();
+  const socorrosFiltradosBusca = termoLimpo
+    ? socorrosExibidos.filter(
+        (ag) =>
+          (ag.cliente || '').toLowerCase().includes(termoLimpo) ||
+          (ag.tel || '').includes(termoLimpo) ||
+          (ag.endereco || '').toLowerCase().includes(termoLimpo) ||
+          (ag.servico || '').toLowerCase().includes(termoLimpo)
+      )
+    : socorrosExibidos;
+
+  const abrirNoMapa = (endereco) => {
+    if (!endereco) return;
+    const query = encodeURIComponent(`${endereco}, Rio de Janeiro - RJ`);
+    window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
+  };
+
+  const chamarClienteSocorroWhatsApp = (ag) => {
+    const msg = `Olá ${ag.cliente || ''}! Aqui é do *Luisinho Chaveiro*. Sobre seu atendimento de socorro (${ag.servico}) no endereço ${ag.endereco}: `;
+    const url = montarURLWhatsAppSeguro(ag.tel, msg);
+    if (!url) {
+      mostrarToast('Cliente sem WhatsApp válido neste socorro.', 'erro');
+      return;
+    }
+    window.open(url, '_blank');
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className={`font-bold text-base ${temaUnidade.textoDestaque}`}>
-          Socorros Externos — {infoUnidadeAtual.nome} ({socorrosExibidos.length})
+          Socorros Externos — {infoUnidadeAtual.nome} ({socorrosFiltradosBusca.length})
         </h2>
         <button
           type="button"
@@ -54,23 +87,45 @@ export default function AbaSocorros({
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {[
-          { id: 'pendente', label: `Pendentes (${socorrosPendentes.length})` },
-          { id: 'concluido', label: `Concluídos (${socorrosConcluidos.length})` },
-          { id: 'todos', label: `Todos (${agendaUnidade.length})` }
-        ].map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFiltroStatusAgenda(f.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
-              filtroStatusAgenda === f.id ? temaUnidade.botaoAtivo : 'bg-slate-900 text-slate-400 border border-slate-800'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            { id: 'pendente', label: `Pendentes (${socorrosPendentes.length})` },
+            { id: 'concluido', label: `Concluídos (${socorrosConcluidos.length})` },
+            { id: 'todos', label: `Todos (${agendaUnidade.length})` }
+          ].map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFiltroStatusAgenda(f.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold ${
+                filtroStatusAgenda === f.id ? temaUnidade.botaoAtivo : 'bg-slate-900 text-slate-400 border border-slate-800'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative w-full sm:w-72">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Buscar socorro (cliente, rua, serviço)..."
+            value={buscaSocorro}
+            onChange={(e) => setBuscaSocorro(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-8 pr-8 py-1.5 text-xs text-slate-200"
+          />
+          {buscaSocorro && (
+            <button
+              type="button"
+              onClick={() => setBuscaSocorro('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       {formAberto.agenda && (
@@ -227,7 +282,7 @@ export default function AbaSocorros({
       )}
 
       <div className="space-y-3">
-        {socorrosExibidos.map((ag) => {
+        {socorrosFiltradosBusca.map((ag) => {
           const totalSoc = Number(ag.valor_estimado || 0) + Number(ag.taxa_deslocamento || 0);
           const listaMat = Array.isArray(ag.itens_usados) ? ag.itens_usados : [];
           const nomeFuncSoc = ag.funcionario_nome || funcionarioPadraoUnidade?.nome || '';
@@ -254,6 +309,26 @@ export default function AbaSocorros({
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 border-slate-800 pt-3 sm:pt-0">
                 <span className="font-bold text-base text-emerald-400">R$ {totalSoc.toFixed(2)}</span>
                 <div className="flex flex-wrap items-center gap-1.5">
+                  {ag.endereco && (
+                    <button
+                      type="button"
+                      onClick={() => abrirNoMapa(ag.endereco)}
+                      className="bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold px-2.5 py-2 rounded-lg flex items-center gap-1 border border-slate-700"
+                      title="Abrir endereço no Google Maps"
+                    >
+                      <Navigation size={12} /> Maps
+                    </button>
+                  )}
+                  {ag.tel && (
+                    <button
+                      type="button"
+                      onClick={() => chamarClienteSocorroWhatsApp(ag)}
+                      className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-bold px-2.5 py-2 rounded-lg flex items-center gap-1 border border-slate-700"
+                      title="Chamar cliente no WhatsApp"
+                    >
+                      <MessageCircle size={12} /> Cliente
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => enviarDiretoParaFuncionario('socorro', ag)}

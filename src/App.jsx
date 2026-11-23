@@ -909,6 +909,47 @@ export default function App() {
     });
   };
 
+  const transferirEstoqueEntrePontos = async (itemId, qtdMov, origemId, destinoId) => {
+    const itemOrigem = estoque.find((e) => e.id === itemId && (e.unidade || 'ponto1') === origemId);
+    if (!itemOrigem) return false;
+    const qtdNum = Math.max(1, Number(qtdMov));
+    if (qtdNum > Number(itemOrigem.qtd)) {
+      mostrarToast(`Quantidade maior que o estoque disponível (${itemOrigem.qtd} un).`, 'erro');
+      return false;
+    }
+
+    const novaQtdOrigem = Number(itemOrigem.qtd) - qtdNum;
+    await supabase.from('estoque').update({ qtd: novaQtdOrigem }).eq('id', itemOrigem.id);
+
+    const itemDestino = estoque.find(
+      (e) => (e.unidade || 'ponto1') === destinoId && e.nome.toLowerCase() === itemOrigem.nome.toLowerCase()
+    );
+
+    if (itemDestino) {
+      await supabase
+        .from('estoque')
+        .update({ qtd: Number(itemDestino.qtd || 0) + qtdNum })
+        .eq('id', itemDestino.id);
+    } else {
+      const novoIdDestino = `${itemOrigem.id}-${destinoId === 'ponto2' ? 'P2' : 'P1'}-${Date.now().toString().slice(-3)}`;
+      await supabase.from('estoque').insert([{
+        id: novoIdDestino,
+        nome: itemOrigem.nome,
+        cat: itemOrigem.cat,
+        qtd: qtdNum,
+        minimo: itemOrigem.minimo || 3,
+        custo: itemOrigem.custo || 0,
+        venda: itemOrigem.venda || 0,
+        vendas_total: 0,
+        unidade: destinoId
+      }]);
+    }
+
+    mostrarToast(`Transferido ${qtdNum}x ${itemOrigem.nome} para ${destinoId === 'ponto2' ? 'Ponto 2' : 'Ponto 1'}!`);
+    carregarDados(true);
+    return true;
+  };
+
   const itensEstoqueBaixo = estoqueUnidade.filter((i) => Number(i.qtd) <= Number(i.minimo || 3));
   const gerarPedidoDistribuidorWhatsApp = () => {
     if (itensEstoqueBaixo.length === 0) return;
@@ -1376,6 +1417,48 @@ export default function App() {
       'Confirmar Reposição',
       false
     );
+  };
+
+  const transferirTrocoEntrePontos = async (valorMov, origemId, destinoId) => {
+    const valorNum = Number(valorMov);
+    if (!valorNum || valorNum <= 0) return false;
+
+    const agora = Date.now();
+    const saidaOrigem = {
+      id: agora,
+      tipo: 'saida',
+      origem_caixa: 'troco',
+      desc: `[TROCO] Transferência para ${destinoId === 'ponto2' ? 'Ponto 2' : 'Ponto 1'}`,
+      valor: valorNum,
+      custo_insumo: 0,
+      forma: 'Dinheiro',
+      data: hojeStr,
+      timestamp: agora,
+      unidade: origemId
+    };
+    const entradaDestino = {
+      id: agora + 1,
+      tipo: 'entrada',
+      origem_caixa: 'troco',
+      desc: `[TROCO] Recebido de ${origemId === 'ponto2' ? 'Ponto 2' : 'Ponto 1'}`,
+      valor: valorNum,
+      custo_insumo: 0,
+      forma: 'Dinheiro',
+      data: hojeStr,
+      timestamp: agora + 1,
+      unidade: destinoId
+    };
+
+    const { error } = await supabase.from('transacoes').insert([saidaOrigem, entradaDestino]);
+    if (error) {
+      const { origem_caixa: o1, ...b1 } = saidaOrigem;
+      const { origem_caixa: o2, ...b2 } = entradaDestino;
+      await supabase.from('transacoes').insert([b1, b2]);
+    }
+
+    mostrarToast(`Troco de R$ ${valorNum.toFixed(2)} transferido para ${destinoId === 'ponto2' ? 'Ponto 2' : 'Ponto 1'}!`);
+    carregarDados(true);
+    return true;
   };
 
   const salvarEdicaoTransacao = async () => {
@@ -2470,6 +2553,7 @@ export default function App() {
           <AbaCaixa
             temaUnidade={temaUnidade}
             unidadeAtiva={unidadeAtiva}
+            unidadeOperacional={unidadeOperacional}
             infoUnidadeAtual={infoUnidadeAtual}
             fundoTrocoBase={fundoTrocoBase}
             filtroPeriodoCaixa={filtroPeriodoCaixa}
@@ -2481,6 +2565,7 @@ export default function App() {
             diferencaReposicaoTroco={diferencaReposicaoTroco}
             saldoTrocoAtual={saldoTrocoAtual}
             reporTrocoAutomatico={reporTrocoAutomatico}
+            transferirTrocoEntrePontos={transferirTrocoEntrePontos}
             totalEntradas={totalEntradas}
             totalSaidasFaturado={totalSaidasFaturado}
             saldoOperacionalFaturado={saldoOperacionalFaturado}
@@ -2518,6 +2603,8 @@ export default function App() {
           <AbaEstoque
             temaUnidade={temaUnidade}
             infoUnidadeAtual={infoUnidadeAtual}
+            unidadeOperacional={unidadeOperacional}
+            unidadeAtiva={unidadeAtiva}
             estoqueUnidade={estoqueUnidade}
             itensEstoqueBaixo={itensEstoqueBaixo}
             gerarPedidoDistribuidorWhatsApp={gerarPedidoDistribuidorWhatsApp}
@@ -2540,6 +2627,7 @@ export default function App() {
             alterarQtdEstoque={alterarQtdEstoque}
             iniciarEdicaoEstoque={iniciarEdicaoEstoque}
             excluirItemEstoque={excluirItemEstoque}
+            transferirEstoqueEntrePontos={transferirEstoqueEntrePontos}
           />
         )}
 
